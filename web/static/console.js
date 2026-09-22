@@ -64,6 +64,7 @@ function connect() {
   rfb.viewOnly = mode === "view";
 
   rfb.addEventListener("connect", async () => {
+    rfbConnected = true;
     setStatus("ok", mode === "view" ? "Connected (view only)" : "Connected");
     stopped.hidden = true;
     rfb.focus();
@@ -71,6 +72,7 @@ function connect() {
   });
   rfb.addEventListener("disconnect", (e) => {
     rfb = null;
+    rfbConnected = false;
     setStatus("bad", e.detail.clean ? "Disconnected" : "Connection lost");
     scheduleReconnect(1500);
   });
@@ -116,6 +118,8 @@ function applyControl(c) {
   }
 }
 
+let rfbConnected = false;
+
 function applyVMStatus(st) {
   lastStatus = st;
   if (st.accel_note) { accelChip.hidden = false; accelChip.textContent = "Software emulation"; accelChip.title = st.accel_note; }
@@ -124,7 +128,9 @@ function applyVMStatus(st) {
   if (st.state === "running") {
     stopped.hidden = true;
     if (!rfb) connect();
+    else if (rfbConnected) setStatus("ok", mode === "view" ? "Connected (view only)" : "Connected");
   } else {
+    rfbConnected = false;
     disconnect();
     stopped.hidden = false;
     const titles = { stopped: "VM is stopped", starting: "VM is starting…", stopping: "VM is shutting down…", crashed: "VM crashed" };
