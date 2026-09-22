@@ -365,6 +365,7 @@ func (s *Server) apiSetup(w http.ResponseWriter, r *http.Request) {
 		CPUs          int    `json:"cpus"`
 		DiskGB        int    `json:"disk_gb"`
 		Accel         string `json:"accel"`
+		ClipboardSync *bool  `json:"clipboard_sync"`
 		Start         bool   `json:"start"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
@@ -401,6 +402,9 @@ func (s *Server) apiSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Accel != "" {
 		vmCfg.Accel = body.Accel
+	}
+	if body.ClipboardSync != nil {
+		vmCfg.ClipboardSync = body.ClipboardSync
 	}
 	if err := config.ValidateVM(&vmCfg); err != nil {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})

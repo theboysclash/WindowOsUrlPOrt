@@ -30,6 +30,7 @@ $("setupForm").onsubmit = async (e) => {
     disk_gb: Number(f.get("disk_gb") || 0),
     disk_interface: f.get("disk_interface"),
     accel: f.get("accel"),
+    clipboard_sync: f.get("clipboard_sync") === "on",
     start: f.get("start") === "on",
   };
   const btn = $("setupSubmit");

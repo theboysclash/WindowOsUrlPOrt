@@ -128,3 +128,5 @@ body.console { display: flex; flex-direction: column; overflow: hidden; }
 .menu-body.share { min-width: 320px; }
 .menu-body.share a { word-break: break-all; }
 .btn.small { font-size: 0.82rem; text-align: center; }
+label.check { flex-wrap: wrap; }
+label.check .hint { flex-basis: 100%; margin-left: 24px; }

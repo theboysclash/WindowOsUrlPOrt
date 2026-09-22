@@ -59,6 +59,9 @@
         </select>
       </label>
     </div>
+    <label class="check"><input type="checkbox" name="clipboard_sync" {{if .Config.ClipboardEnabled}}checked{{end}}> Clipboard sync between browser and VM
+      <span class="hint">Needs spice-guest-tools installed inside Windows. While enabled, QEMU cannot take live snapshots.</span>
+    </label>
     <label class="check"><input type="checkbox" name="start" checked> Start the VM after saving</label>
     <div class="row">
       <button type="submit" class="primary" id="setupSubmit">{{if .Status.DiskExists}}Save{{else}}Create and start{{end}}</button>

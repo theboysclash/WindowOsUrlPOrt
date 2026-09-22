@@ -49,6 +49,7 @@ type Status struct {
 	RAMMB       int       `json:"ram_mb"`
 	CPUs        int       `json:"cpus"`
 	ISOAttached bool      `json:"iso_attached"`
+	Clipboard   bool      `json:"clipboard"`
 }
 
 type Manager struct {
@@ -177,11 +178,15 @@ func (m *Manager) Args(accel string) []string {
 		"-vnc", fmt.Sprintf("127.0.0.1:%d,password=on", cfg.VNCPort-5900),
 		"-qmp", fmt.Sprintf("tcp:127.0.0.1:%d,server=on,wait=off", cfg.QMPPort),
 		"-name", "vmserver-guest",
+	}
+	if cfg.ClipboardEnabled() {
 		// Clipboard sync between browser and guest; needs spice-guest-tools
 		// (vdagent) installed in Windows, harmless otherwise.
-		"-chardev", "qemu-vdagent,id=vdagent,name=vdagent,clipboard=on",
-		"-device", "virtio-serial-pci",
-		"-device", "virtserialport,chardev=vdagent,name=com.redhat.spice.0",
+		args = append(args,
+			"-chardev", "qemu-vdagent,id=vdagent,name=vdagent,clipboard=on",
+			"-device", "virtio-serial-pci",
+			"-device", "virtserialport,chardev=vdagent,name=com.redhat.spice.0",
+		)
 	}
 	if runtime.GOOS == "windows" && accel == "whpx" {
 		// Hyper-V enlightenments make Windows guests noticeably smoother.
@@ -503,8 +508,11 @@ func (m *Manager) SaveSnapshot(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(out) != "" {
-		return errors.New(strings.TrimSpace(out))
+	if msg := strings.TrimSpace(out); msg != "" {
+		if strings.Contains(msg, "vdagent") {
+			return errors.New("snapshots are not possible while clipboard sync is enabled: turn off \"Clipboard sync\" in VM setup, restart the VM and try again")
+		}
+		return errors.New(msg)
 	}
 	return nil
 }
@@ -648,6 +656,7 @@ func (m *Manager) Status() Status {
 		RAMMB:       m.cfg.RAMMB,
 		CPUs:        m.cfg.CPUs,
 		ISOAttached: m.cfg.ISOPath != "",
+		Clipboard:   m.cfg.ClipboardEnabled(),
 	}
 	if m.lastErr != nil {
 		st.LastError = m.lastErr.Error()

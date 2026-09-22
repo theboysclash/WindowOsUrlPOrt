@@ -51,6 +51,10 @@ type VM struct {
 	QMPPort       int    `yaml:"qmp_port"`
 	// Accel is "auto", "whpx", "hvf", "kvm" or "tcg".
 	Accel string `yaml:"accel"`
+	// ClipboardSync attaches a vdagent channel so the browser clipboard is
+	// shared with the guest (needs spice-guest-tools in Windows). QEMU cannot
+	// take live snapshots while this device is present.
+	ClipboardSync *bool `yaml:"clipboard_sync,omitempty"`
 	// AutoStart boots the VM as soon as the server starts.
 	AutoStart bool `yaml:"auto_start"`
 	// RestartOnCrash relaunches QEMU if it exits unexpectedly.
@@ -223,6 +227,9 @@ func (c *Config) Validate() error {
 	}
 	return nil
 }
+
+// ClipboardEnabled reports whether clipboard sync is on (default true).
+func (v *VM) ClipboardEnabled() bool { return v.ClipboardSync == nil || *v.ClipboardSync }
 
 // ValidateVM checks and normalises the VM section.
 func ValidateVM(c *VM) error {
