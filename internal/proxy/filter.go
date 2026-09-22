@@ -25,6 +25,16 @@ const (
 // clipboard) are dropped so a viewer cannot affect the guest even with a
 // modified browser client.
 func copyClientMessages(dst io.Writer, src io.Reader, viewOnly bool) error {
+	// The first byte after the security handshake is ClientInit (shared
+	// flag), not a message type; forward it as is.
+	init := make([]byte, 1)
+	if _, err := io.ReadFull(src, init); err != nil {
+		return err
+	}
+	if _, err := dst.Write(init); err != nil {
+		return err
+	}
+
 	r := &countingReader{Reader: src}
 	buf := make([]byte, 0, 4096)
 	for {
