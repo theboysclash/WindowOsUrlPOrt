@@ -130,3 +130,55 @@ $("tunnelLogBtn").onclick = async () => {
 };
 
 if (location.hash === "#sharing") document.getElementById("sharing").scrollIntoView();
+
+// --- Tailscale ---
+
+$("tsForm").onsubmit = async (e) => {
+  e.preventDefault();
+  $("tsError").hidden = true;
+  const f = new FormData(e.target);
+  try {
+    await post("/api/tailscale", {
+      enabled: f.get("enabled") === "on",
+      funnel: f.get("funnel") === "on",
+      hostname: f.get("hostname") || "",
+      auth_key: f.get("auth_key") || "",
+    });
+    $("tsStatusBox").textContent = "State: starting";
+    pollTailscale(40);
+  } catch (err) {
+    $("tsError").textContent = err.message;
+    $("tsError").hidden = false;
+  }
+};
+
+async function pollTailscale(times) {
+  const box = $("tsStatusBox");
+  for (let i = 0; i < times; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const res = await fetch("/api/status", { credentials: "same-origin" });
+      const st = (await res.json()).tailscale;
+      box.innerHTML = "";
+      if (st.state === "running" && st.url) {
+        box.append("Connected: ");
+        const a = document.createElement("a");
+        a.href = st.url; a.textContent = st.url; a.target = "_blank"; a.rel = "noopener";
+        box.appendChild(a);
+        if (st.note) box.append(" — " + st.note);
+        return;
+      } else if (st.state === "needs_login" && st.auth_url) {
+        box.append("Waiting for sign-in: ");
+        const a = document.createElement("a");
+        a.href = st.auth_url; a.textContent = "open the Tailscale login link"; a.target = "_blank"; a.rel = "noopener";
+        box.appendChild(a);
+      } else if (st.state === "error") {
+        box.textContent = "Error: " + (st.error || "unknown");
+        return;
+      } else {
+        box.textContent = "State: " + st.state;
+        if (st.state === "disabled" || st.state === "stopped") return;
+      }
+    } catch { /* keep polling */ }
+  }
+}

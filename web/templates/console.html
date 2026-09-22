@@ -46,10 +46,21 @@
     <details class="menu">
       <summary id="shareSummary">Share</summary>
       <div class="menu-body share">
-        <div id="shareBody" class="small muted">Sharing is off.</div>
-        <div class="row">
-          <button id="shareCopy" hidden>Copy link</button>
-          {{if .Admin}}<button id="shareToggle">Turn on sharing</button>{{end}}
+        <div class="share-section">
+          <div class="share-title">Tailscale <span class="muted small">(recommended — hard to block)</span></div>
+          <div id="tsBody" class="small muted">Off.</div>
+          <div class="row">
+            <button id="tsCopy" hidden>Copy link</button>
+            {{if .Admin}}<button id="tsToggle">Turn on</button>{{end}}
+          </div>
+        </div>
+        <div class="share-section">
+          <div class="share-title">Cloudflare quick link</div>
+          <div id="shareBody" class="small muted">Off.</div>
+          <div class="row">
+            <button id="shareCopy" hidden>Copy link</button>
+            {{if .Admin}}<button id="shareToggle">Turn on</button>{{end}}
+          </div>
         </div>
         {{if .Admin}}<a class="btn small" href="/setup#sharing">Sharing settings</a>{{end}}
       </div>

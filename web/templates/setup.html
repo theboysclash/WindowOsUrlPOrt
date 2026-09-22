@@ -70,7 +70,35 @@
   </form>
 
   <section class="advanced" id="sharing">
-    <h2>Sharing (Cloudflare Tunnel)</h2>
+    <h2>Sharing via Tailscale (recommended)</h2>
+    <p class="muted small">The server joins your Tailscale network as a device named <code>{{.TS.Hostname}}</code>. Anyone signed in to the same Tailscale account (or a shared tailnet) reaches it at <code>https://{{.TS.Hostname}}.&lt;your-tailnet&gt;.ts.net</code>; traffic is end-to-end WireGuard and usually gets through networks that block tunnel domains. Turn on <em>Funnel</em> to make the same link work for people without Tailscale.</p>
+    <div class="alert" id="tsStatusBox">
+      {{if eq .TSStatus.State "running"}}Connected: <a href="{{.TSStatus.URL}}" target="_blank" rel="noopener">{{.TSStatus.URL}}</a>{{if .TSStatus.Note}} — {{.TSStatus.Note}}{{end}}
+      {{else if eq .TSStatus.State "needs_login"}}Waiting for sign-in: <a href="{{.TSStatus.AuthURL}}" target="_blank" rel="noopener">open the Tailscale login link</a>
+      {{else if eq .TSStatus.State "error"}}Error: {{.TSStatus.Error}}
+      {{else}}State: {{.TSStatus.State}}{{end}}
+    </div>
+    <div class="alert error" id="tsError" hidden></div>
+    <form id="tsForm">
+      <label class="check"><input type="checkbox" name="enabled" {{if .TS.Enabled}}checked{{end}}> Enable Tailscale</label>
+      <label class="check"><input type="checkbox" name="funnel" {{if .TS.Funnel}}checked{{end}}> Funnel: also publish on the public internet
+        <span class="hint">Requires Funnel to be allowed in your tailnet policy and HTTPS certificates enabled (Admin console → DNS). If it is not, the console falls back to tailnet-only and shows the reason.</span>
+      </label>
+      <div class="grid2">
+        <label>Device name in the tailnet
+          <input name="hostname" value="{{.TS.Hostname}}" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" placeholder="vmserver">
+        </label>
+        <label>Auth key (optional)
+          <input name="auth_key" type="password" placeholder="{{if .HasTSKey}}(saved — leave empty to keep){{else}}tskey-auth-…{{end}}" autocomplete="off">
+          <span class="hint">Without a key, a one-time sign-in link appears in the Share menu.</span>
+        </label>
+      </div>
+      <div class="row"><button type="submit" class="primary">Save and apply</button></div>
+    </form>
+  </section>
+
+  <section class="advanced">
+    <h2>Sharing via Cloudflare Tunnel</h2>
     <p class="muted small">Publishes the sign-in page on an HTTPS address that works from any network, with no router port forwarding. Traffic goes through Cloudflare to the <code>cloudflared</code> connector running on this PC.</p>
     <div class="alert" id="tunnelStatus">
       {{if eq .TStatus.State "connected"}}Connected: <a href="{{.TStatus.URL}}" target="_blank" rel="noopener">{{.TStatus.URL}}</a>

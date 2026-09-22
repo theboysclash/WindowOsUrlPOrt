@@ -22,6 +22,7 @@ import (
 
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
 	"github.com/theboysclash/WindowOsUrlPOrt/web"
@@ -32,8 +33,12 @@ type Server struct {
 	auth   *auth.Manager
 	vm     *vm.Manager
 	tunnel *tunnel.Manager
+	tail   *tailnet.Manager
 	log    *slog.Logger
 	tmpl   *template.Template
+
+	handlerOnce sync.Once
+	handler     http.Handler
 
 	upgrader websocket.Upgrader
 	control  controller
@@ -50,14 +55,14 @@ type controller struct {
 	viewers   int
 }
 
-func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, tun *tunnel.Manager, log *slog.Logger) (*Server, error) {
+func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, tun *tunnel.Manager, tail *tailnet.Manager, log *slog.Logger) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"json": jsonAttr,
 	}).ParseFS(web.FS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, auth: am, vm: vmm, tunnel: tun, log: log, tmpl: tmpl}
+	s := &Server{cfg: cfg, auth: am, vm: vmm, tunnel: tun, tail: tail, log: log, tmpl: tmpl}
 	s.upgrader = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
@@ -66,7 +71,14 @@ func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, tun *tunnel.Mana
 	return s, nil
 }
 
+// Handler returns the routed application handler. It is shared by the local
+// HTTPS listener and the Tailscale listener.
 func (s *Server) Handler() http.Handler {
+	s.handlerOnce.Do(func() { s.handler = s.buildHandler() })
+	return s.handler
+}
+
+func (s *Server) buildHandler() http.Handler {
 	mux := http.NewServeMux()
 
 	static, _ := fs.Sub(web.FS, "static")
@@ -101,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("POST /api/vm/eject", s.requireAdmin(http.HandlerFunc(s.apiEject)))
 	api.Handle("POST /api/tunnel", s.requireAdmin(http.HandlerFunc(s.apiTunnel)))
 	api.Handle("GET /api/tunnel/log", s.requireAdmin(http.HandlerFunc(s.apiTunnelLog)))
+	api.Handle("POST /api/tailscale", s.requireAdmin(http.HandlerFunc(s.apiTailscale)))
 	api.Handle("POST /api/users", s.requireAdmin(http.HandlerFunc(s.apiAddUser)))
 	api.Handle("POST /api/password", http.HandlerFunc(s.apiChangePassword))
 	mux.Handle("/api/", s.requireAuth(csrfGuard(api)))

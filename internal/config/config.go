@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -95,6 +96,26 @@ type Tunnel struct {
 	AutoDownload bool `yaml:"auto_download"`
 }
 
+// Tailscale embeds a Tailscale node (tsnet) in the server so the console is
+// reachable at https://<hostname>.<tailnet>.ts.net from every device on your
+// tailnet, and optionally from the public internet via Tailscale Funnel.
+// Traffic is WireGuard peer-to-peer or relayed over 443, which is rarely
+// blocked by network filters.
+type Tailscale struct {
+	Enabled bool `yaml:"enabled"`
+	// Hostname is the machine name inside the tailnet (default "vmserver").
+	Hostname string `yaml:"hostname"`
+	// Funnel additionally publishes the console on the public internet.
+	// Requires the Funnel node attribute in the tailnet policy; Tailscale
+	// shows how to enable it when it is missing.
+	Funnel bool `yaml:"funnel"`
+	// AuthKey pre-authorises the node (Admin console > Settings > Keys).
+	// When empty a one-time login link is shown in the console.
+	AuthKey string `yaml:"auth_key,omitempty"`
+	// ControlURL overrides the coordination server (for Headscale).
+	ControlURL string `yaml:"control_url,omitempty"`
+}
+
 type Config struct {
 	ListenAddr string `yaml:"listen_addr"`
 	// DataDir stores generated certificates, the session secret and logs.
@@ -103,7 +124,9 @@ type Config struct {
 	Auth    Auth   `yaml:"auth"`
 	VM      VM     `yaml:"vm"`
 	Tunnel  Tunnel `yaml:"tunnel"`
-	Users   []User `yaml:"users"`
+	// Tailscale is the second sharing method; both can be on at once.
+	Tailscale Tailscale `yaml:"tailscale"`
+	Users     []User    `yaml:"users"`
 
 	path string
 	mu   *sync.RWMutex
@@ -151,7 +174,8 @@ func Default(baseDir string) *Config {
 			AutoStart:      true,
 			RestartOnCrash: false,
 		},
-		Tunnel: Tunnel{Enabled: false, Mode: "quick", AutoDownload: true},
+		Tunnel:    Tunnel{Enabled: false, Mode: "quick", AutoDownload: true},
+		Tailscale: Tailscale{Enabled: false, Hostname: "vmserver", Funnel: false},
 	}
 }
 
@@ -211,6 +235,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := ValidateTunnel(&c.Tunnel); err != nil {
+		return err
+	}
+	if err := ValidateTailscale(&c.Tailscale); err != nil {
 		return err
 	}
 	if c.Auth.SessionTTLMinutes <= 0 {
@@ -273,6 +300,24 @@ func ValidateTunnel(t *Tunnel) error {
 		}
 	default:
 		return fmt.Errorf("tunnel.mode must be quick or named, got %q", t.Mode)
+	}
+	return nil
+}
+
+// ValidateTailscale checks and normalises the tailscale section.
+func ValidateTailscale(t *Tailscale) error {
+	t.Hostname = strings.ToLower(strings.TrimSpace(t.Hostname))
+	if t.Hostname == "" {
+		t.Hostname = "vmserver"
+	}
+	if len(t.Hostname) > 63 {
+		return errors.New("tailscale.hostname must be at most 63 characters")
+	}
+	for i, r := range t.Hostname {
+		ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || (r == '-' && i > 0 && i < len(t.Hostname)-1)
+		if !ok {
+			return errors.New("tailscale.hostname may only contain lowercase letters, digits and inner hyphens")
+		}
 	}
 	return nil
 }

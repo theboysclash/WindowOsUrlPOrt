@@ -14,6 +14,7 @@ import (
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/proxy"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
 )
@@ -146,6 +147,9 @@ type setupData struct {
 	HasToken bool
 	TStatus  tunnel.Status
 	Origin   string
+	TS       config.Tailscale
+	HasTSKey bool
+	TSStatus tailnet.Status
 }
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
@@ -153,10 +157,14 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 	t := s.cfg.Tunnel
 	hasToken := t.Token != ""
 	t.Token = ""
+	ts := s.cfg.Tailscale
+	hasKey := ts.AuthKey != ""
+	ts.AuthKey = ""
 	s.render(w, "setup.html", setupData{
 		User: sess.Username, Config: s.vm.Config(), Status: s.vm.Status(),
 		Tunnel: t, HasToken: hasToken, TStatus: s.tunnel.Status(),
 		Origin: strings.Replace(LocalOrigin(s.cfg), "127.0.0.1", "localhost", 1),
+		TS:     ts, HasTSKey: hasKey, TSStatus: s.tail.Status(),
 	})
 }
 
@@ -265,10 +273,11 @@ func (c *controller) info(sessionID string) controlInfo {
 func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r.Context())
 	writeJSON(w, 200, map[string]any{
-		"vm":      s.vm.Status(),
-		"control": s.control.info(sess.ID),
-		"urls":    s.URLs(),
-		"tunnel":  s.tunnel.Status(),
+		"vm":        s.vm.Status(),
+		"control":   s.control.info(sess.ID),
+		"urls":      s.URLs(),
+		"tunnel":    s.tunnel.Status(),
+		"tailscale": s.tail.Status(),
 	})
 }
 
@@ -496,6 +505,53 @@ func (s *Server) apiTunnel(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("tunnel settings changed", "user", sess.Username, "enabled", t.Enabled, "mode", t.Mode)
 	s.tunnel.Start(t)
 	writeJSON(w, 200, s.tunnel.Status())
+}
+
+// apiTailscale updates the embedded Tailscale node settings and restarts it.
+func (s *Server) apiTailscale(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Enabled    *bool   `json:"enabled"`
+		Hostname   string  `json:"hostname"`
+		Funnel     *bool   `json:"funnel"`
+		AuthKey    string  `json:"auth_key"`
+		ControlURL *string `json:"control_url"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "invalid json"})
+		return
+	}
+	s.cfg.Lock()
+	defer s.cfg.Unlock()
+	t := s.cfg.Tailscale
+	if body.Enabled != nil {
+		t.Enabled = *body.Enabled
+	}
+	if body.Hostname != "" {
+		t.Hostname = body.Hostname
+	}
+	if body.Funnel != nil {
+		t.Funnel = *body.Funnel
+	}
+	if body.AuthKey != "" {
+		t.AuthKey = strings.TrimSpace(body.AuthKey)
+	}
+	if body.ControlURL != nil {
+		t.ControlURL = strings.TrimSpace(*body.ControlURL)
+	}
+	if err := config.ValidateTailscale(&t); err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	s.cfg.Tailscale = t
+	if err := s.cfg.Save(); err != nil {
+		writeErr(w, err)
+		return
+	}
+	sess := sessionFrom(r.Context())
+	s.log.Info("tailscale settings changed", "user", sess.Username, "enabled", t.Enabled, "funnel", t.Funnel)
+	// Restart asynchronously: stopping the node can take a few seconds.
+	go s.tail.Start(t, s.Handler())
+	writeJSON(w, 200, map[string]any{"state": "starting", "enabled": t.Enabled, "funnel": t.Funnel, "hostname": t.Hostname})
 }
 
 func (s *Server) apiTunnelLog(w http.ResponseWriter, r *http.Request) {

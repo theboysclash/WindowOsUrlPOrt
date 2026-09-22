@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/httpserver"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
 )
@@ -41,6 +43,8 @@ func run() error {
 		listen     = flag.String("listen", "", "override listen address, e.g. 0.0.0.0:8443")
 		noVM       = flag.Bool("no-vm", false, "do not start the VM automatically")
 		share      = flag.Bool("share", false, "enable a Cloudflare quick tunnel for this run (public *.trycloudflare.com URL)")
+		tailscale  = flag.Bool("tailscale", false, "join your Tailscale network for this run (https://<name>.<tailnet>.ts.net)")
+		funnel     = flag.Bool("funnel", false, "with -tailscale: also publish on the public internet via Tailscale Funnel")
 		addUser    = flag.String("add-user", "", "add or update a user as user:password[:admin] and exit")
 		resetAdmin = flag.Bool("reset-admin-password", false, "generate a new password for the first admin user and exit")
 		printURLs  = flag.Bool("print-urls", false, "print the console URLs and exit")
@@ -113,7 +117,14 @@ func run() error {
 	})
 	vmm := vm.NewManager(cfg.VM, *baseDir, log)
 	tun := tunnel.NewManager(cfg.Tunnel, *baseDir, cfg.DataDir, httpserver.LocalOrigin(cfg), log)
-	srv, err := httpserver.New(cfg, am, vmm, tun, log)
+	var selfSigned *tls.Certificate
+	if cfg.TLS.Mode != config.TLSFiles {
+		if cert, err := httpserver.LoadOrCreateSelfSigned(cfg.DataDir); err == nil {
+			selfSigned = &cert
+		}
+	}
+	tail := tailnet.NewManager(cfg.Tailscale, cfg.DataDir, selfSigned, log)
+	srv, err := httpserver.New(cfg, am, vmm, tun, tail, log)
 	if err != nil {
 		return err
 	}
@@ -166,6 +177,15 @@ func run() error {
 		tun.Start(tunCfg)
 		go announceTunnel(ctx, tun)
 	}
+	tsCfg := cfg.Tailscale
+	if *tailscale || *funnel {
+		tsCfg.Enabled = true
+		tsCfg.Funnel = tsCfg.Funnel || *funnel
+	}
+	if tsCfg.Enabled {
+		tail.Start(tsCfg, srv.Handler())
+		go announceTailscale(ctx, tail)
+	}
 
 	select {
 	case err := <-serveErr:
@@ -177,6 +197,7 @@ func run() error {
 
 	log.Info("shutting down")
 	tun.Stop()
+	tail.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := vmm.Stop(shutdownCtx, 45*time.Second); err != nil && !errors.Is(err, vm.ErrNotRunning) {
@@ -210,6 +231,47 @@ func announceTunnel(ctx context.Context, tun *tunnel.Manager) {
 			if st.State == tunnel.StateError && st.Error != "" && st.Error != last {
 				last = st.Error
 				fmt.Println("  Tunnel problem: " + st.Error)
+			}
+		}
+	}
+}
+
+// announceTailscale prints the login link and, once connected, the tailnet URL.
+func announceTailscale(ctx context.Context, tail *tailnet.Manager) {
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+	last := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			st := tail.Status()
+			key := string(st.State) + st.URL + st.AuthURL + st.Error
+			if key == last {
+				continue
+			}
+			last = key
+			switch st.State {
+			case tailnet.StateNeedsLogin:
+				fmt.Println()
+				fmt.Println("  Tailscale: this PC is not connected to a Tailscale account yet.")
+				fmt.Println("  Open this link, sign in and approve the machine:")
+				fmt.Println("    " + st.AuthURL)
+				fmt.Println()
+			case tailnet.StateRunning:
+				fmt.Println()
+				fmt.Println("  Tailscale URL (works from any device signed in to your tailnet):")
+				fmt.Println("    " + st.URL)
+				if st.Funnel && st.Note == "" {
+					fmt.Println("  Funnel is on: the same link also works from the public internet.")
+				}
+				if st.Note != "" {
+					fmt.Println("  Note: " + st.Note)
+				}
+				fmt.Println()
+			case tailnet.StateError:
+				fmt.Println("  Tailscale problem: " + st.Error)
 			}
 		}
 	}

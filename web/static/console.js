@@ -140,50 +140,110 @@ function applyVMStatus(st) {
 }
 
 let tunnelStatus = { state: "disabled" };
+let tsStatus = { state: "disabled" };
+
+function linkBlock(container, label, url, note) {
+  container.innerHTML = "";
+  const l = document.createElement("div");
+  l.textContent = label;
+  const a = document.createElement("a");
+  a.href = url; a.textContent = url; a.target = "_blank"; a.rel = "noopener";
+  container.append(l, a);
+  if (note) {
+    const n = document.createElement("div");
+    n.className = "muted small";
+    n.textContent = note;
+    container.appendChild(n);
+  }
+}
+
+function updateShareSummary() {
+  const live = (tsStatus.state === "running") || (tunnelStatus.state === "connected");
+  const busy = ["starting", "downloading", "needs_login"].includes(tsStatus.state) || ["starting", "downloading"].includes(tunnelStatus.state);
+  const err = tsStatus.state === "error" || tunnelStatus.state === "error";
+  $("shareSummary").textContent = live ? "Share · live" : err ? "Share · error" : busy ? "Share · …" : "Share";
+}
+
 function applyTunnel(t) {
   tunnelStatus = t || { state: "disabled" };
   const body = $("shareBody");
   const copy = $("shareCopy");
   const toggle = $("shareToggle");
-  const summary = $("shareSummary");
   const texts = {
-    disabled: "Sharing is off. Turn it on to get a public link that works from anywhere.",
+    disabled: "Off. Gives a public https://….trycloudflare.com link (no account). Some school/work networks block it.",
     downloading: "Downloading cloudflared… (first time only)",
     starting: "Connecting to Cloudflare…",
-    stopped: "Sharing is off.",
+    stopped: "Off.",
   };
   if (tunnelStatus.state === "connected" && tunnelStatus.url) {
-    body.innerHTML = "";
-    const label = document.createElement("div");
-    label.textContent = "Anyone with this link can reach the sign-in page:";
-    const link = document.createElement("a");
-    link.href = tunnelStatus.url;
-    link.textContent = tunnelStatus.url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    body.append(label, link);
-    if (tunnelStatus.mode === "quick") {
-      const note = document.createElement("div");
-      note.className = "muted small";
-      note.textContent = "This link changes when the server restarts.";
-      body.appendChild(note);
-    }
+    linkBlock(body, "Anyone with this link can reach the sign-in page:", tunnelStatus.url,
+      tunnelStatus.mode === "quick" ? "This link changes when the server restarts." : "");
     copy.hidden = false;
-    summary.textContent = "Share · live";
   } else if (tunnelStatus.state === "error") {
-    body.textContent = "Sharing error: " + (tunnelStatus.error || "unknown");
+    body.textContent = "Error: " + (tunnelStatus.error || "unknown");
     copy.hidden = true;
-    summary.textContent = "Share · error";
   } else {
     body.textContent = texts[tunnelStatus.state] || tunnelStatus.state;
     copy.hidden = true;
-    summary.textContent = tunnelStatus.state === "disabled" || tunnelStatus.state === "stopped" ? "Share" : "Share · …";
   }
   if (toggle) {
     const on = !(tunnelStatus.state === "disabled" || tunnelStatus.state === "stopped");
-    toggle.textContent = on ? "Turn off sharing" : "Turn on sharing";
+    toggle.textContent = on ? "Turn off" : "Turn on";
     toggle.dataset.on = on ? "1" : "0";
   }
+  updateShareSummary();
+}
+
+function applyTailscale(t) {
+  tsStatus = t || { state: "disabled" };
+  const body = $("tsBody");
+  const copy = $("tsCopy");
+  const toggle = $("tsToggle");
+  if (tsStatus.state === "running" && tsStatus.url) {
+    const who = tsStatus.funnel && !tsStatus.note ? "Works from the public internet and from your Tailscale devices:" : "Works from any device signed in to your Tailscale network:";
+    linkBlock(body, who, tsStatus.url, tsStatus.note || "");
+    copy.hidden = false;
+  } else if (tsStatus.state === "needs_login") {
+    body.innerHTML = "";
+    const l = document.createElement("div");
+    l.textContent = "Connect this PC to your Tailscale account (one time):";
+    const a = document.createElement("a");
+    a.href = tsStatus.auth_url; a.textContent = "Open Tailscale sign-in"; a.target = "_blank"; a.rel = "noopener";
+    a.className = "btn small";
+    body.append(l, a);
+    copy.hidden = true;
+  } else if (tsStatus.state === "error") {
+    body.textContent = "Error: " + (tsStatus.error || "unknown");
+    copy.hidden = true;
+  } else if (tsStatus.state === "starting") {
+    body.textContent = "Connecting to Tailscale…";
+    copy.hidden = true;
+  } else {
+    body.textContent = "Off. Private link over Tailscale (install Tailscale on the other PC and sign in to the same account), or turn on Funnel in settings for a public https://….ts.net link.";
+    copy.hidden = true;
+  }
+  if (toggle) {
+    const on = !(tsStatus.state === "disabled" || tsStatus.state === "stopped");
+    toggle.textContent = on ? "Turn off" : "Turn on";
+    toggle.dataset.on = on ? "1" : "0";
+  }
+  updateShareSummary();
+}
+
+$("tsCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(tsStatus.url); $("tsCopy").textContent = "Copied"; setTimeout(() => ($("tsCopy").textContent = "Copy link"), 1500); }
+  catch { prompt("Copy this link:", tsStatus.url); }
+};
+const tsToggle = $("tsToggle");
+if (tsToggle) {
+  tsToggle.onclick = async () => {
+    const turnOn = tsToggle.dataset.on !== "1";
+    try {
+      await api("/api/tailscale", { method: "POST", body: { enabled: turnOn } });
+      applyTailscale({ state: turnOn ? "starting" : "stopped" });
+      setTimeout(refreshStatus, 1500);
+    } catch (err) { showBanner(err.message, "error"); }
+  };
 }
 
 $("shareCopy").onclick = async () => {
@@ -208,6 +268,7 @@ async function refreshStatus() {
     applyVMStatus(data.vm);
     applyControl(data.control);
     applyTunnel(data.tunnel);
+    applyTailscale(data.tailscale);
   } catch (err) {
     setStatus("bad", "Server unreachable");
   }
