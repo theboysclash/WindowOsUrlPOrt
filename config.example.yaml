@@ -39,6 +39,13 @@ tunnel:
   # hostname: vm.example.com       # named tunnels: public hostname, for display
   auto_download: true              # fetch cloudflared from GitHub if not bundled
 
+tailscale:
+  enabled: false                   # embedded Tailscale node -> https://<hostname>.<tailnet>.ts.net
+  hostname: vmserver               # device name in your tailnet
+  funnel: false                    # also publish on the public internet (needs Funnel allowed in tailnet policy)
+  # auth_key: tskey-auth-...       # optional; otherwise a one-time login link is shown
+  # control_url: https://headscale.example.com
+
 users:
   - username: admin
     password_hash: "$2a$10$replace-me-generated-on-first-run"
