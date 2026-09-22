@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VM setup · VM Server</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="center">
+<main class="card setup">
+  <div class="brand">
+    <h1>VM setup</h1>
+    <p class="muted">Signed in as {{.User}} · <a href="/console">back to console</a></p>
+  </div>
+
+  <div class="alert" id="setupNotice">
+    {{if not .Status.QEMUFound}}
+      <strong>QEMU was not found.</strong> Put the QEMU for Windows files in <code>third_party\qemu</code> next to the executable, or set <code>vm.qemu_dir</code> in <code>config.yaml</code>.
+    {{else if not .Status.DiskExists}}
+      No disk image exists yet. Point to a Windows ISO on <em>this server</em>, choose resources and click <strong>Create and start</strong>. The installer will boot in the console.
+    {{else}}
+      Disk image found at <code>{{.Config.DiskPath}}</code>. You can change resources or attach an ISO; changes apply on next start.
+    {{end}}
+  </div>
+  <div class="alert error" id="setupError" hidden></div>
+
+  <form id="setupForm">
+    <label>Windows ISO path on server
+      <input name="iso_path" value="{{.Config.ISOPath}}" placeholder="C:\ISOs\Win10_22H2_English_x64.iso">
+      <span class="hint">Leave empty to boot from the existing disk. Detach after installation finishes.</span>
+    </label>
+    <label>virtio-win driver ISO (optional)
+      <input name="virtio_iso_path" value="{{.Config.VirtioISOPath}}" placeholder="C:\ISOs\virtio-win.iso">
+      <span class="hint">Only needed if the disk interface is virtio.</span>
+    </label>
+    <div class="grid2">
+      <label>Memory (MB)
+        <input name="ram_mb" type="number" min="1024" step="256" value="{{.Config.RAMMB}}">
+      </label>
+      <label>CPUs
+        <input name="cpus" type="number" min="1" max="32" value="{{.Config.CPUs}}">
+      </label>
+      <label>Disk size (GB, new disk only)
+        <input name="disk_gb" type="number" min="16" value="40" {{if .Status.DiskExists}}disabled{{end}}>
+      </label>
+      <label>Disk interface
+        <select name="disk_interface">
+          <option value="sata" {{if eq .Config.DiskInterface "sata"}}selected{{end}}>SATA (works with stock Windows media)</option>
+          <option value="virtio" {{if eq .Config.DiskInterface "virtio"}}selected{{end}}>virtio (faster, needs drivers)</option>
+        </select>
+      </label>
+      <label>Accelerator
+        <select name="accel">
+          <option value="auto" {{if eq .Config.Accel "auto"}}selected{{end}}>Auto (hardware, fall back to software)</option>
+          <option value="whpx" {{if eq .Config.Accel "whpx"}}selected{{end}}>WHPX (Windows Hypervisor Platform)</option>
+          <option value="kvm" {{if eq .Config.Accel "kvm"}}selected{{end}}>KVM (Linux host)</option>
+          <option value="hvf" {{if eq .Config.Accel "hvf"}}selected{{end}}>HVF (macOS host)</option>
+          <option value="tcg" {{if eq .Config.Accel "tcg"}}selected{{end}}>TCG (software, slow)</option>
+        </select>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" name="start" checked> Start the VM after saving</label>
+    <div class="row">
+      <button type="submit" class="primary" id="setupSubmit">{{if .Status.DiskExists}}Save{{else}}Create and start{{end}}</button>
+      {{if .Config.ISOPath}}<button type="button" id="btnEject">Detach installation media</button>{{end}}
+    </div>
+  </form>
+
+  <details class="advanced">
+    <summary>Add a user</summary>
+    <form id="userForm" class="grid2">
+      <label>Username<input name="username" required></label>
+      <label>Password<input name="password" type="password" minlength="8" required></label>
+      <label class="check"><input type="checkbox" name="admin"> Administrator</label>
+      <div class="row"><button type="submit">Add or update user</button></div>
+    </form>
+  </details>
+
+  <details class="advanced">
+    <summary>Host requirements</summary>
+    <ul class="muted small">
+      <li>Enable virtualization in the BIOS/UEFI.</li>
+      <li>On Windows, run <code>scripts\enable-whpx.ps1</code> as administrator once, then reboot.</li>
+      <li>Give the guest at most half of the host's RAM and cores.</li>
+      <li>Store the disk image on an SSD.</li>
+    </ul>
+  </details>
+</main>
+<script type="module" src="/static/setup.js"></script>
+</body>
+</html>

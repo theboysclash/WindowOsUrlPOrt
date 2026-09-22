@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console · VM Server</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="console">
+<header class="toolbar" id="toolbar">
+  <div class="group">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Connecting…</span>
+    <span class="chip" id="accelChip" hidden></span>
+  </div>
+  <div class="group">
+    <button id="btnCAD" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
+    <button id="btnWin" title="Send Windows key">Win</button>
+    <button id="btnClipboard" title="Clipboard">Clipboard</button>
+    <button id="btnScale" title="Toggle scale to window" aria-pressed="true">Fit</button>
+    <button id="btnFullscreen" title="Fullscreen">Fullscreen</button>
+    <button id="btnControl" title="Take control" hidden>Take control</button>
+  </div>
+  <div class="group">
+    <details class="menu">
+      <summary>Power</summary>
+      <div class="menu-body">
+        <button data-vm="start">Start</button>
+        <button data-vm="shutdown">Shut down (ACPI)</button>
+        <button data-vm="reset">Reset</button>
+        <button data-vm="pause">Pause</button>
+        <button data-vm="resume">Resume</button>
+        <button data-vm="forcestop" class="danger">Force stop</button>
+      </div>
+    </details>
+    <details class="menu">
+      <summary>Snapshots</summary>
+      <div class="menu-body" id="snapshotMenu">
+        <form id="snapForm" class="row">
+          <input id="snapName" placeholder="name" pattern="[A-Za-z0-9_-]{1,64}" required>
+          <button type="submit">Save</button>
+        </form>
+        <div id="snapList" class="list"></div>
+      </div>
+    </details>
+    <details class="menu">
+      <summary>{{.User}}</summary>
+      <div class="menu-body">
+        {{if .Admin}}<a class="btn" href="/setup">VM setup</a>{{end}}
+        <button id="btnLog">Show QEMU log</button>
+        <button id="btnPassword">Change password</button>
+        <form method="post" action="/logout"><button type="submit" class="wide">Sign out</button></form>
+      </div>
+    </details>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main id="screen" class="screen"></main>
+
+<aside id="clipPanel" class="panel" hidden>
+  <div class="panel-head"><strong>Clipboard</strong><button id="clipClose" class="ghost">×</button></div>
+  <p class="muted small">Text you paste here is sent to the VM's clipboard; text copied inside the VM appears here.</p>
+  <textarea id="clipText" rows="8"></textarea>
+  <div class="row"><button id="clipSend" class="primary">Send to VM</button></div>
+</aside>
+
+<aside id="logPanel" class="panel wide-panel" hidden>
+  <div class="panel-head"><strong>QEMU log</strong><button id="logClose" class="ghost">×</button></div>
+  <pre id="logText" class="log"></pre>
+</aside>
+
+<div id="stopped" class="overlay" hidden>
+  <div class="card">
+    <h2 id="stoppedTitle">VM is stopped</h2>
+    <p id="stoppedText" class="muted"></p>
+    <div class="row">
+      <button id="btnStartBig" class="primary">Start VM</button>
+      {{if .Admin}}<a class="btn" href="/setup">Open setup</a>{{end}}
+    </div>
+  </div>
+</div>
+
+<script id="boot" type="application/json">{{json .}}</script>
+<script type="module" src="/static/console.js"></script>
+</body>
+</html>

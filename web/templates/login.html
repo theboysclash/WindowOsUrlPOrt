@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · VM Server</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="center">
+<main class="card login">
+  <div class="brand">
+    <div class="logo" aria-hidden="true"></div>
+    <h1>VM Server</h1>
+    <p class="muted">Sign in to open the remote desktop</p>
+  </div>
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+  <form method="post" action="/login" autocomplete="on">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label>Username
+      <input name="username" required autofocus autocapitalize="off" spellcheck="false">
+    </label>
+    <label>Password
+      <input name="password" type="password" required>
+    </label>
+    <button type="submit" class="primary wide">Sign in</button>
+  </form>
+</main>
+</body>
+</html>
