@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VM setup · VM Server</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="center">
+<main class="card setup">
+  <div class="brand">
+    <h1>VM setup</h1>
+    <p class="muted">Signed in as {{.User}} · <a href="/console">back to console</a></p>
+  </div>
+
+  <div class="alert" id="setupNotice">
+    {{if not .Status.QEMUFound}}
+      <strong>QEMU was not found.</strong> Put the QEMU for Windows files in <code>third_party\qemu</code> next to the executable, or set <code>vm.qemu_dir</code> in <code>config.yaml</code>.
+    {{else if not .Status.DiskExists}}
+      No disk image exists yet. Point to a Windows ISO on <em>this server</em>, choose resources and click <strong>Create and start</strong>. The installer will boot in the console.
+    {{else}}
+      Disk image found at <code>{{.Config.DiskPath}}</code>. You can change resources or attach an ISO; changes apply on next start.
+    {{end}}
+  </div>
+  <div class="alert error" id="setupError" hidden></div>
+
+  <form id="setupForm">
+    <label>Windows ISO path on server
+      <input name="iso_path" value="{{.Config.ISOPath}}" placeholder="C:\ISOs\Win10_22H2_English_x64.iso">
+      <span class="hint">Leave empty to boot from the existing disk. Detach after installation finishes.</span>
+    </label>
+    <label>virtio-win driver ISO (optional)
+      <input name="virtio_iso_path" value="{{.Config.VirtioISOPath}}" placeholder="C:\ISOs\virtio-win.iso">
+      <span class="hint">Only needed if the disk interface is virtio.</span>
+    </label>
+    <div class="grid2">
+      <label>Memory (MB)
+        <input name="ram_mb" type="number" min="1024" step="256" value="{{.Config.RAMMB}}">
+      </label>
+      <label>CPUs
+        <input name="cpus" type="number" min="1" max="32" value="{{.Config.CPUs}}">
+      </label>
+      <label>Disk size (GB, new disk only)
+        <input name="disk_gb" type="number" min="16" value="40" {{if .Status.DiskExists}}disabled{{end}}>
+      </label>
+      <label>Disk interface
+        <select name="disk_interface">
+          <option value="sata" {{if eq .Config.DiskInterface "sata"}}selected{{end}}>SATA (works with stock Windows media)</option>
+          <option value="virtio" {{if eq .Config.DiskInterface "virtio"}}selected{{end}}>virtio (faster, needs drivers)</option>
+        </select>
+      </label>
+      <label>Accelerator
+        <select name="accel">
+          <option value="auto" {{if eq .Config.Accel "auto"}}selected{{end}}>Auto (hardware, fall back to software)</option>
+          <option value="whpx" {{if eq .Config.Accel "whpx"}}selected{{end}}>WHPX (Windows Hypervisor Platform)</option>
+          <option value="kvm" {{if eq .Config.Accel "kvm"}}selected{{end}}>KVM (Linux host)</option>
+          <option value="hvf" {{if eq .Config.Accel "hvf"}}selected{{end}}>HVF (macOS host)</option>
+          <option value="tcg" {{if eq .Config.Accel "tcg"}}selected{{end}}>TCG (software, slow)</option>
+        </select>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" name="clipboard_sync" {{if .Config.ClipboardEnabled}}checked{{end}}> Clipboard sync between browser and VM
+      <span class="hint">Needs spice-guest-tools installed inside Windows. While enabled, QEMU cannot take live snapshots.</span>
+    </label>
+    <label class="check"><input type="checkbox" name="start" checked> Start the VM after saving</label>
+    <div class="row">
+      <button type="submit" class="primary" id="setupSubmit">{{if .Status.DiskExists}}Save{{else}}Create and start{{end}}</button>
+      {{if .Config.ISOPath}}<button type="button" id="btnEject">Detach installation media</button>{{end}}
+    </div>
+  </form>
+
+  <section class="advanced" id="sharing">
+    <h2>Sharing via Tailscale (recommended)</h2>
+    <p class="muted small">The server joins your Tailscale network as a device named <code>{{.TS.Hostname}}</code>. Anyone signed in to the same Tailscale account (or a shared tailnet) reaches it at <code>https://{{.TS.Hostname}}.&lt;your-tailnet&gt;.ts.net</code>; traffic is end-to-end WireGuard and usually gets through networks that block tunnel domains. Turn on <em>Funnel</em> to make the same link work for people without Tailscale.</p>
+    <div class="alert" id="tsStatusBox">
+      {{if eq .TSStatus.State "running"}}Connected: <a href="{{.TSStatus.URL}}" target="_blank" rel="noopener">{{.TSStatus.URL}}</a>{{if .TSStatus.Note}} — {{.TSStatus.Note}}{{end}}
+      {{else if eq .TSStatus.State "needs_login"}}Waiting for sign-in: <a href="{{.TSStatus.AuthURL}}" target="_blank" rel="noopener">open the Tailscale login link</a>
+      {{else if eq .TSStatus.State "error"}}Error: {{.TSStatus.Error}}
+      {{else}}State: {{.TSStatus.State}}{{end}}
+    </div>
+    <div class="alert error" id="tsError" hidden></div>
+    <form id="tsForm">
+      <label class="check"><input type="checkbox" name="enabled" {{if .TS.Enabled}}checked{{end}}> Enable Tailscale</label>
+      <label class="check"><input type="checkbox" name="funnel" {{if .TS.Funnel}}checked{{end}}> Funnel: also publish on the public internet
+        <span class="hint">Requires Funnel to be allowed in your tailnet policy and HTTPS certificates enabled (Admin console → DNS). If it is not, the console falls back to tailnet-only and shows the reason.</span>
+      </label>
+      <div class="grid2">
+        <label>Device name in the tailnet
+          <input name="hostname" value="{{.TS.Hostname}}" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" placeholder="vmserver">
+        </label>
+        <label>Auth key (optional)
+          <input name="auth_key" type="password" placeholder="{{if .HasTSKey}}(saved — leave empty to keep){{else}}tskey-auth-…{{end}}" autocomplete="off">
+          <span class="hint">Without a key, a one-time sign-in link appears in the Share menu.</span>
+        </label>
+      </div>
+      <div class="row"><button type="submit" class="primary">Save and apply</button></div>
+    </form>
+  </section>
+
+  <section class="advanced">
+    <h2>Sharing via Cloudflare Tunnel</h2>
+    <p class="muted small">Publishes the sign-in page on an HTTPS address that works from any network, with no router port forwarding. Traffic goes through Cloudflare to the <code>cloudflared</code> connector running on this PC.</p>
+    <div class="alert" id="tunnelStatus">
+      {{if eq .TStatus.State "connected"}}Connected: <a href="{{.TStatus.URL}}" target="_blank" rel="noopener">{{.TStatus.URL}}</a>
+      {{else if eq .TStatus.State "error"}}Error: {{.TStatus.Error}}
+      {{else}}State: {{.TStatus.State}}{{end}}
+    </div>
+    <div class="alert error" id="tunnelError" hidden></div>
+    <form id="tunnelForm">
+      <label class="check"><input type="checkbox" name="enabled" {{if .Tunnel.Enabled}}checked{{end}}> Enable sharing</label>
+      <label>Mode
+        <select name="mode" id="tunnelMode">
+          <option value="quick" {{if eq .Tunnel.Mode "quick"}}selected{{end}}>Quick tunnel — free, no account, random *.trycloudflare.com link that changes on restart</option>
+          <option value="named" {{if eq .Tunnel.Mode "named"}}selected{{end}}>Named tunnel — fixed hostname on your own domain (Cloudflare account)</option>
+        </select>
+      </label>
+      <div id="namedFields" {{if ne .Tunnel.Mode "named"}}hidden{{end}}>
+        <label>Tunnel token
+          <input name="token" type="password" placeholder="{{if .HasToken}}(saved — leave empty to keep){{else}}eyJhIjoi…{{end}}" autocomplete="off">
+          <span class="hint">Cloudflare dashboard → Zero Trust → Networks → Tunnels → Create a tunnel → copy the token from the install command. Set the tunnel's public hostname to point at <code>{{.Origin}}</code> with "No TLS Verify" enabled.</span>
+        </label>
+        <label>Public hostname (for display)
+          <input name="hostname" value="{{.Tunnel.Hostname}}" placeholder="vm.example.com">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="auto_download" {{if .Tunnel.AutoDownload}}checked{{end}}> Download cloudflared automatically if it is not installed</label>
+      <div class="row">
+        <button type="submit" class="primary">Save and apply</button>
+        <button type="button" id="tunnelLogBtn">Show connector log</button>
+      </div>
+    </form>
+    <pre id="tunnelLog" class="log" hidden></pre>
+  </section>
+
+  <details class="advanced">
+    <summary>Add a user</summary>
+    <form id="userForm" class="grid2">
+      <label>Username<input name="username" required></label>
+      <label>Password<input name="password" type="password" minlength="8" required></label>
+      <label class="check"><input type="checkbox" name="admin"> Administrator</label>
+      <div class="row"><button type="submit">Add or update user</button></div>
+    </form>
+  </details>
+
+  <details class="advanced">
+    <summary>Host requirements</summary>
+    <ul class="muted small">
+      <li>Enable virtualization in the BIOS/UEFI.</li>
+      <li>On Windows, run <code>scripts\enable-whpx.ps1</code> as administrator once, then reboot.</li>
+      <li>Give the guest at most half of the host's RAM and cores.</li>
+      <li>Store the disk image on an SSD.</li>
+    </ul>
+  </details>
+</main>
+<script type="module" src="/static/setup.js"></script>
+</body>
+</html>

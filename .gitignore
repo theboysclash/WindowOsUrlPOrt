@@ -1,0 +1,8 @@
+dist/
+vmserver
+vmserver.exe
+config.yaml
+data/
+vm/
+third_party/
+*.qcow2
