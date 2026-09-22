@@ -154,17 +154,24 @@ type setupData struct {
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r.Context())
+	// Show the live state: sharing may have been switched on for this run
+	// with -share/-tailscale without being saved to config.yaml yet.
 	t := s.cfg.Tunnel
 	hasToken := t.Token != ""
 	t.Token = ""
+	tst := s.tunnel.Status()
+	t.Enabled = t.Enabled || (tst.State != tunnel.StateDisabled && tst.State != tunnel.StateStopped)
 	ts := s.cfg.Tailscale
 	hasKey := ts.AuthKey != ""
 	ts.AuthKey = ""
+	tss := s.tail.Status()
+	ts.Enabled = ts.Enabled || (tss.State != tailnet.StateDisabled && tss.State != tailnet.StateStopped)
+	ts.Funnel = ts.Funnel || tss.Funnel
 	s.render(w, "setup.html", setupData{
 		User: sess.Username, Config: s.vm.Config(), Status: s.vm.Status(),
-		Tunnel: t, HasToken: hasToken, TStatus: s.tunnel.Status(),
+		Tunnel: t, HasToken: hasToken, TStatus: tst,
 		Origin: strings.Replace(LocalOrigin(s.cfg), "127.0.0.1", "localhost", 1),
-		TS:     ts, HasTSKey: hasKey, TSStatus: s.tail.Status(),
+		TS:     ts, HasTSKey: hasKey, TSStatus: tss,
 	})
 }
 
