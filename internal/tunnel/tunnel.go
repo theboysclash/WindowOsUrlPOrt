@@ -271,7 +271,9 @@ func (m *Manager) runOnce(ctx context.Context, bin string, cfg config.Tunnel) er
 		line := sc.Text()
 		m.remember(line)
 		if cfg.Mode == "quick" {
-			if u := quickURLRe.FindString(line); u != "" {
+			// cloudflared also logs its API endpoint (api.trycloudflare.com)
+			// in error messages; only the assigned hostname is a tunnel URL.
+			if u := quickURLRe.FindString(line); u != "" && u != "https://api.trycloudflare.com" {
 				m.log.Info("tunnel url", "url", u)
 				m.setState(StateConnected, u, nil)
 			}
