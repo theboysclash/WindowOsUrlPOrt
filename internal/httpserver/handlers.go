@@ -14,6 +14,7 @@ import (
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/proxy"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
 )
 
@@ -138,14 +139,25 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 }
 
 type setupData struct {
-	User   string
-	Config config.VM
-	Status vm.Status
+	User     string
+	Config   config.VM
+	Status   vm.Status
+	Tunnel   config.Tunnel
+	HasToken bool
+	TStatus  tunnel.Status
+	Origin   string
 }
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r.Context())
-	s.render(w, "setup.html", setupData{User: sess.Username, Config: s.vm.Config(), Status: s.vm.Status()})
+	t := s.cfg.Tunnel
+	hasToken := t.Token != ""
+	t.Token = ""
+	s.render(w, "setup.html", setupData{
+		User: sess.Username, Config: s.vm.Config(), Status: s.vm.Status(),
+		Tunnel: t, HasToken: hasToken, TStatus: s.tunnel.Status(),
+		Origin: strings.Replace(LocalOrigin(s.cfg), "127.0.0.1", "localhost", 1),
+	})
 }
 
 // --- WebSocket VNC ---
@@ -256,6 +268,7 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 		"vm":      s.vm.Status(),
 		"control": s.control.info(sess.ID),
 		"urls":    s.URLs(),
+		"tunnel":  s.tunnel.Status(),
 	})
 }
 
@@ -433,6 +446,56 @@ func (s *Server) apiEject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"ok": "media detached; takes effect on next VM start"})
+}
+
+// apiTunnel updates the Cloudflare Tunnel settings and (re)starts cloudflared.
+func (s *Server) apiTunnel(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Enabled      *bool  `json:"enabled"`
+		Mode         string `json:"mode"`
+		Token        string `json:"token"`
+		Hostname     string `json:"hostname"`
+		AutoDownload *bool  `json:"auto_download"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "invalid json"})
+		return
+	}
+	s.cfg.Lock()
+	defer s.cfg.Unlock()
+	t := s.cfg.Tunnel
+	if body.Enabled != nil {
+		t.Enabled = *body.Enabled
+	}
+	if body.Mode != "" {
+		t.Mode = body.Mode
+	}
+	// An empty token in the request keeps the stored one so it never has to
+	// be re-entered (and is never echoed back to the browser).
+	if body.Token != "" {
+		t.Token = strings.TrimSpace(body.Token)
+	}
+	t.Hostname = strings.TrimSpace(body.Hostname)
+	if body.AutoDownload != nil {
+		t.AutoDownload = *body.AutoDownload
+	}
+	if err := config.ValidateTunnel(&t); err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	s.cfg.Tunnel = t
+	if err := s.cfg.Save(); err != nil {
+		writeErr(w, err)
+		return
+	}
+	sess := sessionFrom(r.Context())
+	s.log.Info("tunnel settings changed", "user", sess.Username, "enabled", t.Enabled, "mode", t.Mode)
+	s.tunnel.Start(t)
+	writeJSON(w, 200, s.tunnel.Status())
+}
+
+func (s *Server) apiTunnelLog(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"status": s.tunnel.Status(), "log": s.tunnel.Log()})
 }
 
 func (s *Server) apiAddUser(w http.ResponseWriter, r *http.Request) {

@@ -44,6 +44,17 @@
       </div>
     </details>
     <details class="menu">
+      <summary id="shareSummary">Share</summary>
+      <div class="menu-body share">
+        <div id="shareBody" class="small muted">Sharing is off.</div>
+        <div class="row">
+          <button id="shareCopy" hidden>Copy link</button>
+          {{if .Admin}}<button id="shareToggle">Turn on sharing</button>{{end}}
+        </div>
+        {{if .Admin}}<a class="btn small" href="/setup#sharing">Sharing settings</a>{{end}}
+      </div>
+    </details>
+    <details class="menu">
       <summary>{{.User}}</summary>
       <div class="menu-body">
         {{if .Admin}}<a class="btn" href="/setup">VM setup</a>{{end}}

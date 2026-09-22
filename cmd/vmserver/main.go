@@ -19,6 +19,7 @@ import (
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/httpserver"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
 )
 
@@ -39,6 +40,7 @@ func run() error {
 		baseDir    = flag.String("dir", defaultBase, "base directory holding config.yaml, data/ and vm/")
 		listen     = flag.String("listen", "", "override listen address, e.g. 0.0.0.0:8443")
 		noVM       = flag.Bool("no-vm", false, "do not start the VM automatically")
+		share      = flag.Bool("share", false, "enable a Cloudflare quick tunnel for this run (public *.trycloudflare.com URL)")
 		addUser    = flag.String("add-user", "", "add or update a user as user:password[:admin] and exit")
 		resetAdmin = flag.Bool("reset-admin-password", false, "generate a new password for the first admin user and exit")
 		printURLs  = flag.Bool("print-urls", false, "print the console URLs and exit")
@@ -110,7 +112,8 @@ func run() error {
 		Secure:        cfg.TLS.Mode != config.TLSOff,
 	})
 	vmm := vm.NewManager(cfg.VM, *baseDir, log)
-	srv, err := httpserver.New(cfg, am, vmm, log)
+	tun := tunnel.NewManager(cfg.Tunnel, *baseDir, cfg.DataDir, httpserver.LocalOrigin(cfg), log)
+	srv, err := httpserver.New(cfg, am, vmm, tun, log)
 	if err != nil {
 		return err
 	}
@@ -154,6 +157,16 @@ func run() error {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.ListenAndServe(ctx) }()
 
+	tunCfg := cfg.Tunnel
+	if *share {
+		tunCfg.Enabled = true
+		tunCfg.Mode = "quick"
+	}
+	if tunCfg.Enabled {
+		tun.Start(tunCfg)
+		go announceTunnel(ctx, tun)
+	}
+
 	select {
 	case err := <-serveErr:
 		if err != nil {
@@ -163,6 +176,7 @@ func run() error {
 	}
 
 	log.Info("shutting down")
+	tun.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := vmm.Stop(shutdownCtx, 45*time.Second); err != nil && !errors.Is(err, vm.ErrNotRunning) {
@@ -170,6 +184,35 @@ func run() error {
 	}
 	<-serveErr
 	return nil
+}
+
+// announceTunnel prints the public URL once cloudflared reports it.
+func announceTunnel(ctx context.Context, tun *tunnel.Manager) {
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+	last := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			st := tun.Status()
+			if st.State == tunnel.StateConnected && st.URL != "" && st.URL != last {
+				last = st.URL
+				fmt.Println()
+				fmt.Println("  Shareable public URL (Cloudflare Tunnel):")
+				fmt.Println("    " + st.URL)
+				if st.Mode == "quick" {
+					fmt.Println("  This address changes every time the server restarts. Use a named tunnel for a fixed one.")
+				}
+				fmt.Println()
+			}
+			if st.State == tunnel.StateError && st.Error != "" && st.Error != last {
+				last = st.Error
+				fmt.Println("  Tunnel problem: " + st.Error)
+			}
+		}
+	}
 }
 
 func newLogger(dataDir string) *slog.Logger {

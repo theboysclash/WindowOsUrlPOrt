@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,6 +105,18 @@ func (m *Manager) qemuBinary(name string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%s not found: set vm.qemu_dir in config.yaml or place QEMU in %s", name, filepath.Join(m.baseDir, "third_party", "qemu"))
+}
+
+// portFree reports an error if something is already listening on the loopback
+// port, which would make the QMP/VNC connection go to the wrong process.
+func portFree(port int) error {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	c, err := net.DialTimeout("tcp", addr, 300*time.Millisecond)
+	if err == nil {
+		c.Close()
+		return fmt.Errorf("port %d is already in use", port)
+	}
+	return nil
 }
 
 func defaultAccel() string {
@@ -228,6 +241,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err != nil {
 		return fail(err)
 	}
+	for _, port := range []int{m.cfg.QMPPort, m.cfg.VNCPort} {
+		if err := portFree(port); err != nil {
+			return fail(fmt.Errorf("%w; is another QEMU (or a previous vmserver) still running?", err))
+		}
+	}
 
 	accels := []string{m.cfg.Accel}
 	if m.cfg.Accel == "auto" {
@@ -317,6 +335,7 @@ func (m *Manager) launch(ctx context.Context, bin, accel string) error {
 	m.accelUsed = accel
 	m.startedAt = time.Now()
 	m.state = StateRunning
+	m.lastErr = nil
 	m.exited = exited
 	m.mu.Unlock()
 

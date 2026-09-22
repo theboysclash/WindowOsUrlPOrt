@@ -124,3 +124,7 @@ body.console { display: flex; flex-direction: column; overflow: hidden; }
 .overlay .card { max-width: 480px; text-align: center; }
 .overlay h2 { margin-top: 0; }
 [hidden] { display: none !important; }
+.advanced h2 { font-size: 1.1rem; margin: 4px 0 6px; }
+.menu-body.share { min-width: 320px; }
+.menu-body.share a { word-break: break-all; }
+.btn.small { font-size: 0.82rem; text-align: center; }

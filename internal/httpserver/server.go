@@ -22,16 +22,18 @@ import (
 
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
 	"github.com/theboysclash/WindowOsUrlPOrt/web"
 )
 
 type Server struct {
-	cfg  *config.Config
-	auth *auth.Manager
-	vm   *vm.Manager
-	log  *slog.Logger
-	tmpl *template.Template
+	cfg    *config.Config
+	auth   *auth.Manager
+	vm     *vm.Manager
+	tunnel *tunnel.Manager
+	log    *slog.Logger
+	tmpl   *template.Template
 
 	upgrader websocket.Upgrader
 	control  controller
@@ -48,14 +50,14 @@ type controller struct {
 	viewers   int
 }
 
-func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, log *slog.Logger) (*Server, error) {
+func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, tun *tunnel.Manager, log *slog.Logger) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"json": jsonAttr,
 	}).ParseFS(web.FS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, auth: am, vm: vmm, log: log, tmpl: tmpl}
+	s := &Server{cfg: cfg, auth: am, vm: vmm, tunnel: tun, log: log, tmpl: tmpl}
 	s.upgrader = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
@@ -97,6 +99,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/snapshots/{name}", s.apiDeleteSnapshot)
 	api.Handle("POST /api/setup", s.requireAdmin(http.HandlerFunc(s.apiSetup)))
 	api.Handle("POST /api/vm/eject", s.requireAdmin(http.HandlerFunc(s.apiEject)))
+	api.Handle("POST /api/tunnel", s.requireAdmin(http.HandlerFunc(s.apiTunnel)))
+	api.Handle("GET /api/tunnel/log", s.requireAdmin(http.HandlerFunc(s.apiTunnelLog)))
 	api.Handle("POST /api/users", s.requireAdmin(http.HandlerFunc(s.apiAddUser)))
 	api.Handle("POST /api/password", http.HandlerFunc(s.apiChangePassword))
 	mux.Handle("/api/", s.requireAuth(csrfGuard(api)))
@@ -154,6 +158,19 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		return nil
 	}
 	return err
+}
+
+// LocalOrigin returns the loopback URL cloudflared should forward to.
+func LocalOrigin(cfg *config.Config) string {
+	scheme := "https"
+	if cfg.TLS.Mode == config.TLSOff {
+		scheme = "http"
+	}
+	_, port, err := net.SplitHostPort(cfg.ListenAddr)
+	if err != nil {
+		port = "8443"
+	}
+	return fmt.Sprintf("%s://127.0.0.1:%s", scheme, port)
 }
 
 // URLs returns the addresses users can type into a browser to reach the server.
@@ -268,7 +285,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rw := &statusWriter{ResponseWriter: w, code: 200}
 		next.ServeHTTP(rw, r)
-		s.log.Info("http", "method", r.Method, "path", r.URL.Path, "status", rw.code, "remote", r.RemoteAddr, "ms", time.Since(start).Milliseconds())
+		s.log.Info("http", "method", r.Method, "path", r.URL.Path, "status", rw.code, "remote", auth.ClientIP(r), "ms", time.Since(start).Milliseconds())
 	})
 }
 

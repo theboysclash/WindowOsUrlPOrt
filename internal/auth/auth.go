@@ -79,13 +79,23 @@ func RandomPassword(nBytes int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func clientIP(r *http.Request) string {
+// ClientIP returns the address used for rate limiting and logs. Requests that
+// arrive through the local cloudflared connector come from loopback, so the
+// Cloudflare-provided header is trusted only in that case.
+func ClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		if cf := r.Header.Get("CF-Connecting-IP"); cf != "" && net.ParseIP(cf) != nil {
+			return cf
+		}
 	}
 	return host
 }
+
+func clientIP(r *http.Request) string { return ClientIP(r) }
 
 func (m *Manager) lockedOut(ip string, now time.Time) bool {
 	window := now.Add(-m.opts.AttemptWindow)

@@ -66,6 +66,41 @@
     </div>
   </form>
 
+  <section class="advanced" id="sharing">
+    <h2>Sharing (Cloudflare Tunnel)</h2>
+    <p class="muted small">Publishes the sign-in page on an HTTPS address that works from any network, with no router port forwarding. Traffic goes through Cloudflare to the <code>cloudflared</code> connector running on this PC.</p>
+    <div class="alert" id="tunnelStatus">
+      {{if eq .TStatus.State "connected"}}Connected: <a href="{{.TStatus.URL}}" target="_blank" rel="noopener">{{.TStatus.URL}}</a>
+      {{else if eq .TStatus.State "error"}}Error: {{.TStatus.Error}}
+      {{else}}State: {{.TStatus.State}}{{end}}
+    </div>
+    <div class="alert error" id="tunnelError" hidden></div>
+    <form id="tunnelForm">
+      <label class="check"><input type="checkbox" name="enabled" {{if .Tunnel.Enabled}}checked{{end}}> Enable sharing</label>
+      <label>Mode
+        <select name="mode" id="tunnelMode">
+          <option value="quick" {{if eq .Tunnel.Mode "quick"}}selected{{end}}>Quick tunnel — free, no account, random *.trycloudflare.com link that changes on restart</option>
+          <option value="named" {{if eq .Tunnel.Mode "named"}}selected{{end}}>Named tunnel — fixed hostname on your own domain (Cloudflare account)</option>
+        </select>
+      </label>
+      <div id="namedFields" {{if ne .Tunnel.Mode "named"}}hidden{{end}}>
+        <label>Tunnel token
+          <input name="token" type="password" placeholder="{{if .HasToken}}(saved — leave empty to keep){{else}}eyJhIjoi…{{end}}" autocomplete="off">
+          <span class="hint">Cloudflare dashboard → Zero Trust → Networks → Tunnels → Create a tunnel → copy the token from the install command. Set the tunnel's public hostname to point at <code>{{.Origin}}</code> with "No TLS Verify" enabled.</span>
+        </label>
+        <label>Public hostname (for display)
+          <input name="hostname" value="{{.Tunnel.Hostname}}" placeholder="vm.example.com">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="auto_download" {{if .Tunnel.AutoDownload}}checked{{end}}> Download cloudflared automatically if it is not installed</label>
+      <div class="row">
+        <button type="submit" class="primary">Save and apply</button>
+        <button type="button" id="tunnelLogBtn">Show connector log</button>
+      </div>
+    </form>
+    <pre id="tunnelLog" class="log" hidden></pre>
+  </section>
+
   <details class="advanced">
     <summary>Add a user</summary>
     <form id="userForm" class="grid2">

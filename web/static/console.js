@@ -139,12 +139,75 @@ function applyVMStatus(st) {
   $("logText").textContent = (st.log || []).join("\n");
 }
 
+let tunnelStatus = { state: "disabled" };
+function applyTunnel(t) {
+  tunnelStatus = t || { state: "disabled" };
+  const body = $("shareBody");
+  const copy = $("shareCopy");
+  const toggle = $("shareToggle");
+  const summary = $("shareSummary");
+  const texts = {
+    disabled: "Sharing is off. Turn it on to get a public link that works from anywhere.",
+    downloading: "Downloading cloudflared… (first time only)",
+    starting: "Connecting to Cloudflare…",
+    stopped: "Sharing is off.",
+  };
+  if (tunnelStatus.state === "connected" && tunnelStatus.url) {
+    body.innerHTML = "";
+    const label = document.createElement("div");
+    label.textContent = "Anyone with this link can reach the sign-in page:";
+    const link = document.createElement("a");
+    link.href = tunnelStatus.url;
+    link.textContent = tunnelStatus.url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    body.append(label, link);
+    if (tunnelStatus.mode === "quick") {
+      const note = document.createElement("div");
+      note.className = "muted small";
+      note.textContent = "This link changes when the server restarts.";
+      body.appendChild(note);
+    }
+    copy.hidden = false;
+    summary.textContent = "Share · live";
+  } else if (tunnelStatus.state === "error") {
+    body.textContent = "Sharing error: " + (tunnelStatus.error || "unknown");
+    copy.hidden = true;
+    summary.textContent = "Share · error";
+  } else {
+    body.textContent = texts[tunnelStatus.state] || tunnelStatus.state;
+    copy.hidden = true;
+    summary.textContent = tunnelStatus.state === "disabled" || tunnelStatus.state === "stopped" ? "Share" : "Share · …";
+  }
+  if (toggle) {
+    const on = !(tunnelStatus.state === "disabled" || tunnelStatus.state === "stopped");
+    toggle.textContent = on ? "Turn off sharing" : "Turn on sharing";
+    toggle.dataset.on = on ? "1" : "0";
+  }
+}
+
+$("shareCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(tunnelStatus.url); $("shareCopy").textContent = "Copied"; setTimeout(() => ($("shareCopy").textContent = "Copy link"), 1500); }
+  catch { prompt("Copy this link:", tunnelStatus.url); }
+};
+const shareToggle = $("shareToggle");
+if (shareToggle) {
+  shareToggle.onclick = async () => {
+    const turnOn = shareToggle.dataset.on !== "1";
+    try {
+      const st = await api("/api/tunnel", { method: "POST", body: { enabled: turnOn } });
+      applyTunnel(st);
+    } catch (err) { showBanner(err.message, "error"); }
+  };
+}
+
 async function refreshStatus() {
   try {
     const data = await api("/api/status");
     if (!data) return;
     applyVMStatus(data.vm);
     applyControl(data.control);
+    applyTunnel(data.tunnel);
   } catch (err) {
     setStatus("bad", "Server unreachable");
   }

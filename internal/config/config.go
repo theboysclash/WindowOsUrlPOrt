@@ -69,6 +69,28 @@ type Auth struct {
 	LoginWindowMinutes int `yaml:"login_window_minutes"`
 }
 
+// Tunnel configures the Cloudflare Tunnel (cloudflared) that publishes the
+// console on a shareable HTTPS URL without router port forwarding.
+type Tunnel struct {
+	Enabled bool `yaml:"enabled"`
+	// Mode is "quick" (free, random *.trycloudflare.com URL that changes on
+	// every start, no account needed) or "named" (stable hostname on your
+	// own domain; requires a tunnel token from the Cloudflare Zero Trust
+	// dashboard).
+	Mode string `yaml:"mode"`
+	// Token is the connector token for a named tunnel.
+	Token string `yaml:"token,omitempty"`
+	// Hostname is the public hostname configured for the named tunnel; used
+	// only for display since cloudflared does not report it.
+	Hostname string `yaml:"hostname,omitempty"`
+	// BinaryPath overrides where to find cloudflared. Empty means look in
+	// third_party/cloudflared next to the exe, the data dir, then PATH.
+	BinaryPath string `yaml:"binary_path,omitempty"`
+	// AutoDownload fetches cloudflared from GitHub releases into the data
+	// dir when it cannot be found locally.
+	AutoDownload bool `yaml:"auto_download"`
+}
+
 type Config struct {
 	ListenAddr string `yaml:"listen_addr"`
 	// DataDir stores generated certificates, the session secret and logs.
@@ -76,6 +98,7 @@ type Config struct {
 	TLS     TLS    `yaml:"tls"`
 	Auth    Auth   `yaml:"auth"`
 	VM      VM     `yaml:"vm"`
+	Tunnel  Tunnel `yaml:"tunnel"`
 	Users   []User `yaml:"users"`
 
 	path string
@@ -124,6 +147,7 @@ func Default(baseDir string) *Config {
 			AutoStart:      true,
 			RestartOnCrash: false,
 		},
+		Tunnel: Tunnel{Enabled: false, Mode: "quick", AutoDownload: true},
 	}
 }
 
@@ -182,6 +206,9 @@ func (c *Config) Validate() error {
 	if err := ValidateVM(&c.VM); err != nil {
 		return err
 	}
+	if err := ValidateTunnel(&c.Tunnel); err != nil {
+		return err
+	}
 	if c.Auth.SessionTTLMinutes <= 0 {
 		c.Auth.SessionTTLMinutes = 12 * 60
 	}
@@ -224,6 +251,21 @@ func ValidateVM(c *VM) error {
 	case "whpx", "kvm", "hvf", "tcg":
 	default:
 		return fmt.Errorf("vm.accel must be auto, whpx, kvm, hvf or tcg, got %q", c.Accel)
+	}
+	return nil
+}
+
+// ValidateTunnel checks and normalises the tunnel section.
+func ValidateTunnel(t *Tunnel) error {
+	switch t.Mode {
+	case "", "quick":
+		t.Mode = "quick"
+	case "named":
+		if t.Enabled && t.Token == "" {
+			return errors.New("tunnel.token is required when tunnel.mode is named")
+		}
+	default:
+		return fmt.Errorf("tunnel.mode must be quick or named, got %q", t.Mode)
 	}
 	return nil
 }
