@@ -1,0 +1,45 @@
+# vmserver configuration. On first start this file is created automatically
+# next to vmserver.exe with a generated admin account; edit and restart to
+# apply changes. All paths may be absolute or relative to this file.
+
+listen_addr: 0.0.0.0:8443          # every interface, port 8443
+data_dir: data                     # certificates, logs, downloaded cloudflared
+
+tls:
+  mode: self-signed                # self-signed | files | off
+  # cert_file: C:\certs\fullchain.pem
+  # key_file:  C:\certs\privkey.pem
+
+auth:
+  session_ttl_minutes: 720         # absolute session lifetime
+  idle_timeout_minutes: 60         # sign out after inactivity
+  max_login_attempts: 8            # per IP within login_window_minutes
+  login_window_minutes: 15
+
+vm:
+  qemu_dir: ""                     # empty = third_party\qemu next to the exe, then PATH
+  disk_path: vm\win10.qcow2        # created by the setup wizard (or qemu-img)
+  disk_interface: sata             # sata (stock Windows media) | virtio (needs virtio-win drivers)
+  iso_path: ""                     # Windows installation ISO; clear after installing
+  virtio_iso_path: ""              # optional virtio-win.iso
+  ram_mb: 4096
+  cpus: 2
+  vnc_port: 5900                   # loopback only, never exposed
+  qmp_port: 4444                   # loopback only
+  accel: auto                      # auto | whpx | kvm | hvf | tcg
+  clipboard_sync: true             # browser<->guest clipboard (needs spice-guest-tools); blocks live snapshots
+  auto_start: true
+  restart_on_crash: false
+  # extra_args: ["-device", "intel-hda", "-device", "hda-duplex"]
+
+tunnel:
+  enabled: false                   # publish a shareable HTTPS link through Cloudflare
+  mode: quick                      # quick (random *.trycloudflare.com, no account) | named (your domain)
+  # token: eyJhIjoi...             # named tunnels: connector token from the Zero Trust dashboard
+  # hostname: vm.example.com       # named tunnels: public hostname, for display
+  auto_download: true              # fetch cloudflared from GitHub if not bundled
+
+users:
+  - username: admin
+    password_hash: "$2a$10$replace-me-generated-on-first-run"
+    admin: true

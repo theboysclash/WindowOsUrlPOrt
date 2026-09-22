@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -571,28 +572,19 @@ func (m *Manager) ListSnapshots(ctx context.Context) ([]SnapshotInfo, error) {
 		return nil, err
 	}
 	var list []SnapshotInfo
-	header := true
 	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "List of snapshots") || strings.HasPrefix(line, "There is no") {
+		m := snapshotLineRe.FindStringSubmatch(strings.TrimSpace(line))
+		if m == nil {
 			continue
 		}
-		if header && strings.HasPrefix(line, "ID") {
-			header = false
-			continue
-		}
-		f := strings.Fields(line)
-		if len(f) < 4 {
-			continue
-		}
-		info := SnapshotInfo{ID: f[0], Tag: f[1], Size: f[2]}
-		if len(f) >= 5 {
-			info.Date = f[3] + " " + f[4]
-		}
-		list = append(list, info)
+		list = append(list, SnapshotInfo{ID: m[1], Tag: m[2], Size: strings.TrimSpace(m[3]), Date: m[4]})
 	}
 	return list, nil
 }
+
+// snapshotLineRe matches rows of `info snapshots`, e.g.
+// "1         test1      10.7 MiB 2026-09-22 15:57:01  00:00:12.345  0".
+var snapshotLineRe = regexp.MustCompile(`^(\S+)\s+(\S+)\s+([\d.]+\s*[KMGTP]?i?B)\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})`)
 
 func validateSnapshotName(name string) error {
 	if name == "" || len(name) > 64 {
