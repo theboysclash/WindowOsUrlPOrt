@@ -256,7 +256,7 @@ func (c *Config) Validate() error {
 }
 
 // ClipboardEnabled reports whether clipboard sync is on (default true).
-func (v *VM) ClipboardEnabled() bool { return v.ClipboardSync == nil || *v.ClipboardSync }
+func (v VM) ClipboardEnabled() bool { return v.ClipboardSync == nil || *v.ClipboardSync }
 
 // ValidateVM checks and normalises the VM section.
 func ValidateVM(c *VM) error {
