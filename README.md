@@ -80,6 +80,10 @@ If a school or office filter blocks `*.ts.net` and `trycloudflare.com`, run the 
 
 If the port could not be made public automatically, the file says so: in the **PORTS** tab, right-click port 8080 and choose *Port Visibility ▸ Public*. A Codespace goes to sleep after 30 idle minutes (raise *Default idle timeout* to 240 at <https://github.com/settings/codespaces>) and counts against the free monthly Codespaces hours. Reopen it from <https://github.com/codespaces> to wake it. vmserver keeps retrying and reconnects on its own. The part after `#` is the key that lets a PC attach to the relay, so keep it private.
 
+### Web proxy (Scramjet) in the same Codespace
+
+`proxy/` is the [Scramjet](https://github.com/MercuryWorkshop/scramjet) demo app ([Scramjet-App](https://github.com/MercuryWorkshop/Scramjet-App), AGPL-3.0, see `proxy/LICENSE`). The Codespace starts it on port 8081 next to the relay, makes the port public and adds its link, `https://<codespace>-8081.app.github.dev`, to `RELAY-LINK.txt`. Open that link and type a website or a search. To run it anywhere else: `cd proxy && npx pnpm install && PORT=8081 node src/index.js`.
+
 Because a shared link is reachable from the whole internet: use long passwords, keep the number of accounts small, and turn sharing off when you do not need it.
 
 ## Running at boot
@@ -115,6 +119,7 @@ internal/tunnel/     cloudflared supervisor (quick/named), auto-download
 internal/tailnet/    embedded Tailscale node (tsnet), Funnel, login-link reporting
 internal/relay/      outbound relay link (WebSocket + yamux) and the relay server
 cmd/relay/           relay program run in a GitHub Codespace (.devcontainer/ starts it)
+proxy/               Scramjet web proxy app (Node), also started in the Codespace
 internal/httpserver/ routes, middleware, TLS, API handlers
 web/                 embedded templates, CSS, console/setup scripts, vendored noVNC (MPL-2.0)
 scripts/             build.ps1, enable-whpx.ps1, install-service.ps1
