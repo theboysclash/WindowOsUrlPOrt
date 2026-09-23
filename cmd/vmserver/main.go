@@ -20,6 +20,7 @@ import (
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/httpserver"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/relay"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
@@ -45,6 +46,7 @@ func run() error {
 		share      = flag.Bool("share", false, "enable a Cloudflare quick tunnel for this run (public *.trycloudflare.com URL)")
 		tailscale  = flag.Bool("tailscale", false, "join your Tailscale network for this run (https://<name>.<tailnet>.ts.net)")
 		funnel     = flag.Bool("funnel", false, "with -tailscale: also publish on the public internet via Tailscale Funnel")
+		relayLink  = flag.String("relay", "", `connect to a vmrelay (e.g. in a GitHub Codespace): paste the "https://...#key" link it prints; saved for next time. "off" disables it`)
 		addUser    = flag.String("add-user", "", "add or update a user as user:password[:admin] and exit")
 		resetAdmin = flag.Bool("reset-admin-password", false, "generate a new password for the first admin user and exit")
 		printURLs  = flag.Bool("print-urls", false, "print the console URLs and exit")
@@ -85,6 +87,19 @@ func run() error {
 
 	if *addUser != "" {
 		return addUserCmd(cfg, *addUser)
+	}
+	if *relayLink != "" {
+		if strings.EqualFold(*relayLink, "off") {
+			cfg.Relay.Enabled = false
+		} else {
+			if _, _, err := relay.ParseLink(*relayLink); err != nil {
+				return err
+			}
+			cfg.Relay = config.Relay{Enabled: true, Link: strings.TrimSpace(*relayLink)}
+		}
+		if err := cfg.Save(); err != nil {
+			return err
+		}
 	}
 	if *resetAdmin {
 		for i := range cfg.Users {
@@ -186,6 +201,15 @@ func run() error {
 		tail.Start(tsCfg, srv.Handler())
 		go announceTailscale(ctx, tail)
 	}
+	rc := relay.NewClient(log)
+	srv.SetRelay(rc)
+	if cfg.Relay.Enabled && cfg.Relay.Link != "" {
+		if err := rc.Start(cfg.Relay.Link, srv.Handler()); err != nil {
+			log.Error("relay", "err", err)
+		} else {
+			go announceRelay(ctx, rc)
+		}
+	}
 
 	select {
 	case err := <-serveErr:
@@ -198,6 +222,7 @@ func run() error {
 	log.Info("shutting down")
 	tun.Stop()
 	tail.Stop()
+	rc.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := vmm.Stop(shutdownCtx, 45*time.Second); err != nil && !errors.Is(err, vm.ErrNotRunning) {
@@ -272,6 +297,34 @@ func announceTailscale(ctx context.Context, tail *tailnet.Manager) {
 				fmt.Println()
 			case tailnet.StateError:
 				fmt.Println("  Tailscale problem: " + st.Error)
+			}
+		}
+	}
+}
+
+// announceRelay prints the relay URL each time the connection comes up.
+func announceRelay(ctx context.Context, rc *relay.Client) {
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+	var last relay.State
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			st := rc.Status()
+			if st.State == last {
+				continue
+			}
+			last = st.State
+			switch st.State {
+			case relay.StateConnected:
+				fmt.Println()
+				fmt.Println("  Relay link (GitHub Codespace) - open this on the Chromebook or any other device:")
+				fmt.Println("    " + st.URL)
+				fmt.Println()
+			case relay.StateError:
+				fmt.Println("  Relay problem: " + st.Error + " (retrying)")
 			}
 		}
 	}

@@ -116,6 +116,15 @@ type Tailscale struct {
 	ControlURL string `yaml:"control_url,omitempty"`
 }
 
+// Relay connects out to a vmrelay (cmd/relay, e.g. running in a GitHub
+// Codespace) so the console is reachable on the relay's public URL from
+// networks that block Tailscale and Cloudflare.
+type Relay struct {
+	Enabled bool `yaml:"enabled"`
+	// Link is the "https://host#key" line the relay prints.
+	Link string `yaml:"link,omitempty"`
+}
+
 type Config struct {
 	ListenAddr string `yaml:"listen_addr"`
 	// DataDir stores generated certificates, the session secret and logs.
@@ -126,6 +135,7 @@ type Config struct {
 	Tunnel  Tunnel `yaml:"tunnel"`
 	// Tailscale is the second sharing method; both can be on at once.
 	Tailscale Tailscale `yaml:"tailscale"`
+	Relay     Relay     `yaml:"relay"`
 	Users     []User    `yaml:"users"`
 
 	path string

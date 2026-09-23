@@ -7,3 +7,5 @@ data/
 vm/
 third_party/
 *.qcow2
+RELAY-LINK.txt
+vmrelay-key.txt
