@@ -2,18 +2,24 @@
   "name": "VM relay",
   "image": "mcr.microsoft.com/devcontainers/go:1",
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
   },
   "containerEnv": {
     "GOTOOLCHAIN": "auto"
   },
-  "forwardPorts": [8080],
+  "forwardPorts": [8080, 8081],
   "portsAttributes": {
     "8080": {
       "label": "VM relay",
       "onAutoForward": "silent"
+    },
+    "8081": {
+      "label": "Web proxy (Scramjet)",
+      "onAutoForward": "silent"
     }
   },
+  "postCreateCommand": "cd proxy && npx -y pnpm@10.18.3 install --frozen-lockfile",
   "postStartCommand": "bash .devcontainer/start-relay.sh",
   "waitFor": "postStartCommand",
   "customizations": {
