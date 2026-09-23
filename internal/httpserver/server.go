@@ -111,6 +111,8 @@ func (s *Server) buildHandler() http.Handler {
 	api.HandleFunc("DELETE /api/snapshots/{name}", s.apiDeleteSnapshot)
 	api.Handle("POST /api/setup", s.requireAdmin(http.HandlerFunc(s.apiSetup)))
 	api.Handle("POST /api/vm/eject", s.requireAdmin(http.HandlerFunc(s.apiEject)))
+	api.Handle("POST /api/upload/iso", s.requireAdmin(http.HandlerFunc(s.apiUploadISO)))
+	api.Handle("GET /api/isos", s.requireAdmin(http.HandlerFunc(s.apiListISOs)))
 	api.Handle("POST /api/tunnel", s.requireAdmin(http.HandlerFunc(s.apiTunnel)))
 	api.Handle("GET /api/tunnel/log", s.requireAdmin(http.HandlerFunc(s.apiTunnelLog)))
 	api.Handle("POST /api/tailscale", s.requireAdmin(http.HandlerFunc(s.apiTailscale)))
