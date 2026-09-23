@@ -95,6 +95,10 @@ internal/httpserver/ routes, middleware, TLS, API handlers
 web/                 embedded templates, CSS, console/setup scripts, vendored noVNC (MPL-2.0)
 scripts/             build.ps1, enable-whpx.ps1, install-service.ps1
 ```
+## Recommended Operating sytems to use i personally use Tiny os 10 or Linux lite 
+some sort of Debloated windows or Small Linux Distro
+
+
 
 ## Security notes
 
