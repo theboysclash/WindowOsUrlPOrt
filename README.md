@@ -42,7 +42,7 @@ A local `go build` fails when Go is missing or older than 1.21, because this mod
 2. Enable hardware virtualization: run `scripts\enable-whpx.ps1` as Administrator once and reboot. Without it the VM still runs, but slowly, and the console shows a "Software emulation" chip.
 3. Double-click `vmserver.exe`. The window prints the LAN URLs and a one-time admin password (also saved to `data\initial-credentials.txt`).
 4. From any PC on the same network open `https://<host-ip>:8443`, accept the self-signed certificate warning, sign in.
-5. Open **admin ▸ VM setup**, enter the ISO path, memory, CPUs and disk size, click **Create and start**. The Windows installer appears in the console; install as usual. Afterwards click **Detach installation media**.
+5. Open **admin ▸ VM setup**, drag your Windows `.iso` onto the drop box (or click it to pick the file; it uploads from whichever PC you are browsing from), choose memory, CPUs and disk size, click **Create and start**. The Windows installer appears in the console; install as usual. Afterwards click **Detach installation media**.
 6. Change the admin password (**admin ▸ Change password**) and add users if needed.
 
 Command-line flags: `-dir <folder>` (config/data location), `-listen host:port`, `-tailscale` / `-funnel` (Tailscale sharing for this run), `-share` (Cloudflare quick link for this run), `-no-vm`, `-add-user user:pass[:admin]`, `-reset-admin-password`, `-print-urls`.
