@@ -28,21 +28,13 @@ The executable does **not** contain Windows. On first run the admin opens **VM s
 
 ## Get vmserver.exe
 
-The program is on the branch `cursor/vm-web-server-b15e`, not on `main` yet. `main` only has the license, so a normal clone will not build.
-
 Download the built program (no Go required):
 
-[release/vmserver.exe](https://github.com/theboysclash/WindowOsUrlPOrt/raw/cursor/vm-web-server-b15e/release/vmserver.exe)
+[release/vmserver.exe](https://github.com/theboysclash/WindowOsUrlPOrt/raw/cursor/prebuilt-exe-b15e/release/vmserver.exe)
 
 Put that file in its own folder, then follow the quick start below. You still install QEMU separately.
 
-To compile it yourself, check out this branch and double-click `build.bat`, or run:
-
-```powershell
-go build -o vmserver.exe ./cmd/vmserver
-```
-
-That needs Go 1.21 or newer; the module asks for Go 1.26 and the `go` command downloads it. `build.bat` turns off CGO so a C compiler is not required.
+A local `go build` fails when Go is missing or older than 1.21, because this module needs Go 1.26 (the `go` command downloads that toolchain itself). Double-click `build.bat` on this branch instead of running `go build` by hand. `build.bat` turns off CGO so a C compiler is not required.
 
 ## Quick start (host PC)
 
