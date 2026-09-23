@@ -1,6 +1,7 @@
 dist/
 vmserver
 vmserver.exe
+!release/vmserver.exe
 config.yaml
 data/
 vm/
