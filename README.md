@@ -26,6 +26,24 @@ The executable does **not** contain Windows. On first run the admin opens **VM s
 
 "Tiny10"-style ISOs are third-party modified Windows images. They will boot here like any other ISO (Tiny10 works fine with the default SATA disk), but redistributing them or shipping one inside this program violates Microsoft's licence terms, so this project never bundles one. If you want a small guest, install stock Windows 10 and debloat it inside the VM.
 
+## Get vmserver.exe
+
+The program is on the branch `cursor/vm-web-server-b15e`, not on `main` yet. `main` only has the license, so a normal clone will not build.
+
+Download the built program (no Go required):
+
+[release/vmserver.exe](https://github.com/theboysclash/WindowOsUrlPOrt/raw/cursor/vm-web-server-b15e/release/vmserver.exe)
+
+Put that file in its own folder, then follow the quick start below. You still install QEMU separately.
+
+To compile it yourself, check out this branch and double-click `build.bat`, or run:
+
+```powershell
+go build -o vmserver.exe ./cmd/vmserver
+```
+
+That needs Go 1.21 or newer; the module asks for Go 1.26 and the `go` command downloads it. `build.bat` turns off CGO so a C compiler is not required.
+
 ## Quick start (host PC)
 
 1. Install [QEMU for Windows](https://qemu.weilnetz.de/w64/) (default location is fine) **or** unzip a release that already contains `third_party\qemu`.
