@@ -26,20 +26,30 @@ The executable does **not** contain Windows. On first run the admin opens **VM s
 
 "Tiny10"-style ISOs are third-party modified Windows images. They will boot here like any other ISO (Tiny10 works fine with the default SATA disk), but redistributing them or shipping one inside this program violates Microsoft's licence terms, so this project never bundles one. If you want a small guest, install stock Windows 10 and debloat it inside the VM.
 
+## Get vmserver.exe
+
+Download the built program (no Go required):
+
+[release/vmserver.exe](https://github.com/theboysclash/WindowOsUrlPOrt/raw/cursor/prebuilt-exe-b15e/release/vmserver.exe)
+
+Put that file in its own folder, then follow the quick start below. You still install QEMU separately.
+
+A local `go build` fails when Go is missing or older than 1.21, because this module needs Go 1.26 (the `go` command downloads that toolchain itself). Double-click `build.bat` on this branch instead of running `go build` by hand. `build.bat` turns off CGO so a C compiler is not required.
+
 ## Quick start (host PC)
 
 1. Install [QEMU for Windows](https://qemu.weilnetz.de/w64/) (default location is fine) **or** unzip a release that already contains `third_party\qemu`.
 2. Enable hardware virtualization: run `scripts\enable-whpx.ps1` as Administrator once and reboot. Without it the VM still runs, but slowly, and the console shows a "Software emulation" chip.
 3. Double-click `vmserver.exe`. The window prints the LAN URLs and a one-time admin password (also saved to `data\initial-credentials.txt`).
 4. From any PC on the same network open `https://<host-ip>:8443`, accept the self-signed certificate warning, sign in.
-5. Open **admin ▸ VM setup**, enter the ISO path, memory, CPUs and disk size, click **Create and start**. The Windows installer appears in the console; install as usual. Afterwards click **Detach installation media**.
+5. Open **admin ▸ VM setup**, drag your Windows `.iso` onto the drop box (or click it to pick the file; it uploads from whichever PC you are browsing from), choose memory, CPUs and disk size, click **Create and start**. The Windows installer appears in the console; install as usual. Afterwards click **Detach installation media**.
 6. Change the admin password (**admin ▸ Change password**) and add users if needed.
 
-Command-line flags: `-dir <folder>` (config/data location), `-listen host:port`, `-tailscale` / `-funnel` (Tailscale sharing for this run), `-share` (Cloudflare quick link for this run), `-no-vm`, `-add-user user:pass[:admin]`, `-reset-admin-password`, `-print-urls`.
+Command-line flags: `-dir <folder>` (config/data location), `-listen host:port`, `-tailscale` / `-funnel` (Tailscale sharing for this run), `-share` (Cloudflare quick link for this run), `-relay <link>|off` (GitHub Codespace relay, saved), `-no-vm`, `-add-user user:pass[:admin]`, `-reset-admin-password`, `-print-urls`.
 
 ## Sharing a link with people outside your network
 
-Router port forwarding is not needed. Two methods are built in; pick whichever your network lets through (both can be on at once).
+Router port forwarding is not needed. Three methods are built in; pick whichever your network lets through (they can be on at once).
 
 ### Tailscale (recommended)
 
@@ -57,6 +67,22 @@ The server can also run a Cloudflare Tunnel connector next to it:
 * **Named tunnel** – a fixed hostname on your own domain. In the Cloudflare dashboard go to *Zero Trust ▸ Networks ▸ Tunnels ▸ Create a tunnel*, copy the connector token, and set the public hostname's service to `https://localhost:8443` with **No TLS Verify** enabled. Paste the token in **VM setup ▸ Sharing**, choose *Named tunnel*, save.
 
 `cloudflared.exe` is downloaded from GitHub automatically the first time sharing is switched on (or bundled by `scripts\build.ps1 -BundleCloudflared`). Login rate limiting uses the real visitor address that Cloudflare supplies.
+
+### GitHub Codespace relay (for networks that block Tailscale and Cloudflare)
+
+If a school or office filter blocks `*.ts.net` and `trycloudflare.com`, run the small relay in `cmd/relay` in a GitHub Codespace. Its public address is on `*.app.github.dev`. The host PC connects **out** to the relay and the viewer's traffic goes through GitHub.
+
+1. On any computer, open [this link to create the Codespace](https://codespaces.new/theboysclash/WindowOsUrlPOrt?ref=cursor/prebuilt-exe-b15e&quickstart=1) and click **Create codespace**. It builds and starts the relay by itself, makes port 8080 public and opens `RELAY-LINK.txt`.
+2. `RELAY-LINK.txt` contains one command. Run it once on the host PC in PowerShell, in the folder with `vmserver.exe`:
+   `.\vmserver.exe -relay "https://<codespace>-8080.app.github.dev#<key>"`
+   The link is saved in `config.yaml`, so after that a plain start of `vmserver.exe` reconnects. `-relay off` turns it off.
+3. On the Chromebook, open `https://<codespace>-8080.app.github.dev` and sign in as usual.
+
+If the port could not be made public automatically, the file says so: in the **PORTS** tab, right-click port 8080 and choose *Port Visibility ▸ Public*. A Codespace goes to sleep after 30 idle minutes (raise *Default idle timeout* to 240 at <https://github.com/settings/codespaces>) and counts against the free monthly Codespaces hours. Reopen it from <https://github.com/codespaces> to wake it. vmserver keeps retrying and reconnects on its own. The part after `#` is the key that lets a PC attach to the relay, so keep it private.
+
+### Web proxy (Scramjet) in the same Codespace
+
+`proxy/` is the [Scramjet](https://github.com/MercuryWorkshop/scramjet) demo app ([Scramjet-App](https://github.com/MercuryWorkshop/Scramjet-App), AGPL-3.0, see `proxy/LICENSE`). The Codespace starts it on port 8081 next to the relay, makes the port public and adds its link, `https://<codespace>-8081.app.github.dev`, to `RELAY-LINK.txt`. Open that link and type a website or a search. To run it anywhere else: `cd proxy && npx pnpm install && PORT=8081 node src/index.js`.
 
 Because a shared link is reachable from the whole internet: use long passwords, keep the number of accounts small, and turn sharing off when you do not need it.
 
@@ -91,6 +117,9 @@ internal/vm/         QEMU command line, process supervision, QMP client, snapsho
 internal/proxy/      WebSocket <-> VNC bridge with server-side VNC auth and view-only filter
 internal/tunnel/     cloudflared supervisor (quick/named), auto-download
 internal/tailnet/    embedded Tailscale node (tsnet), Funnel, login-link reporting
+internal/relay/      outbound relay link (WebSocket + yamux) and the relay server
+cmd/relay/           relay program run in a GitHub Codespace (.devcontainer/ starts it)
+proxy/               Scramjet web proxy app (Node), also started in the Codespace
 internal/httpserver/ routes, middleware, TLS, API handlers
 web/                 embedded templates, CSS, console/setup scripts, vendored noVNC (MPL-2.0)
 scripts/             build.ps1, enable-whpx.ps1, install-service.ps1

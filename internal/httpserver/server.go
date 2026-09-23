@@ -22,6 +22,7 @@ import (
 
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/relay"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
@@ -34,6 +35,7 @@ type Server struct {
 	vm     *vm.Manager
 	tunnel *tunnel.Manager
 	tail   *tailnet.Manager
+	relay  *relay.Client
 	log    *slog.Logger
 	tmpl   *template.Template
 
@@ -71,8 +73,11 @@ func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, tun *tunnel.Mana
 	return s, nil
 }
 
+// SetRelay makes the relay connection state visible in the status API.
+func (s *Server) SetRelay(c *relay.Client) { s.relay = c }
+
 // Handler returns the routed application handler. It is shared by the local
-// HTTPS listener and the Tailscale listener.
+// HTTPS listener, the Tailscale listener and the relay.
 func (s *Server) Handler() http.Handler {
 	s.handlerOnce.Do(func() { s.handler = s.buildHandler() })
 	return s.handler
@@ -111,6 +116,8 @@ func (s *Server) buildHandler() http.Handler {
 	api.HandleFunc("DELETE /api/snapshots/{name}", s.apiDeleteSnapshot)
 	api.Handle("POST /api/setup", s.requireAdmin(http.HandlerFunc(s.apiSetup)))
 	api.Handle("POST /api/vm/eject", s.requireAdmin(http.HandlerFunc(s.apiEject)))
+	api.Handle("POST /api/upload/iso", s.requireAdmin(http.HandlerFunc(s.apiUploadISO)))
+	api.Handle("GET /api/isos", s.requireAdmin(http.HandlerFunc(s.apiListISOs)))
 	api.Handle("POST /api/tunnel", s.requireAdmin(http.HandlerFunc(s.apiTunnel)))
 	api.Handle("GET /api/tunnel/log", s.requireAdmin(http.HandlerFunc(s.apiTunnelLog)))
 	api.Handle("POST /api/tailscale", s.requireAdmin(http.HandlerFunc(s.apiTailscale)))

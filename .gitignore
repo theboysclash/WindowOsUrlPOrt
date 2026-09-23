@@ -1,8 +1,11 @@
 dist/
 vmserver
 vmserver.exe
+!release/vmserver.exe
 config.yaml
 data/
 vm/
 third_party/
 *.qcow2
+RELAY-LINK.txt
+vmrelay-key.txt

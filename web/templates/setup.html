@@ -17,7 +17,7 @@
     {{if not .Status.QEMUFound}}
       <strong>QEMU was not found.</strong> Put the QEMU for Windows files in <code>third_party\qemu</code> next to the executable, or set <code>vm.qemu_dir</code> in <code>config.yaml</code>.
     {{else if not .Status.DiskExists}}
-      No disk image exists yet. Point to a Windows ISO on <em>this server</em>, choose resources and click <strong>Create and start</strong>. The installer will boot in the console.
+      No disk image exists yet. Drop your Windows ISO below, choose resources and click <strong>Create and start</strong>. The installer will boot in the console.
     {{else}}
       Disk image found at <code>{{.Config.DiskPath}}</code>. You can change resources or attach an ISO; changes apply on next start.
     {{end}}
@@ -25,14 +25,37 @@
   <div class="alert error" id="setupError" hidden></div>
 
   <form id="setupForm">
-    <label>Windows ISO path on server
-      <input name="iso_path" value="{{.Config.ISOPath}}" placeholder="C:\ISOs\Win10_22H2_English_x64.iso">
+    <div class="field">
+      <div class="field-label">Windows ISO</div>
+      <div class="dropzone" data-target="iso_path" tabindex="0" role="button" aria-label="Choose or drop the Windows ISO">
+        <input type="file" accept=".iso" hidden>
+        <div class="dz-main">Drag the Windows <strong>.iso</strong> file here, or <u>click to choose it</u></div>
+        <div class="dz-current muted small"></div>
+        <div class="dz-progress" hidden><div class="dz-bar"></div></div>
+        <div class="dz-status small"></div>
+      </div>
+      <details class="dz-manual">
+        <summary class="small muted">Use a file already on this PC, or pick an earlier upload</summary>
+        <input name="iso_path" value="{{.Config.ISOPath}}" placeholder="C:\ISOs\Win10_22H2_English_x64.iso">
+        <div class="iso-list small" data-for="iso_path"></div>
+      </details>
       <span class="hint">Leave empty to boot from the existing disk. Detach after installation finishes.</span>
-    </label>
-    <label>virtio-win driver ISO (optional)
-      <input name="virtio_iso_path" value="{{.Config.VirtioISOPath}}" placeholder="C:\ISOs\virtio-win.iso">
+    </div>
+    <div class="field">
+      <div class="field-label">virtio-win driver ISO (optional)</div>
+      <div class="dropzone small-zone" data-target="virtio_iso_path" tabindex="0" role="button" aria-label="Choose or drop the virtio driver ISO">
+        <input type="file" accept=".iso" hidden>
+        <div class="dz-main">Drag <strong>virtio-win.iso</strong> here, or <u>click to choose it</u></div>
+        <div class="dz-current muted small"></div>
+        <div class="dz-progress" hidden><div class="dz-bar"></div></div>
+        <div class="dz-status small"></div>
+      </div>
+      <details class="dz-manual">
+        <summary class="small muted">Use a file already on this PC</summary>
+        <input name="virtio_iso_path" value="{{.Config.VirtioISOPath}}" placeholder="C:\ISOs\virtio-win.iso">
+      </details>
       <span class="hint">Only needed if the disk interface is virtio.</span>
-    </label>
+    </div>
     <div class="grid2">
       <label>Memory (MB)
         <input name="ram_mb" type="number" min="1024" step="256" value="{{.Config.RAMMB}}">

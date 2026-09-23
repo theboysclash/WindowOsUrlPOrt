@@ -14,6 +14,7 @@ import (
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/proxy"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/relay"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/vm"
@@ -279,12 +280,17 @@ func (c *controller) info(sessionID string) controlInfo {
 
 func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r.Context())
+	rst := relay.Status{State: relay.StateDisabled}
+	if s.relay != nil {
+		rst = s.relay.Status()
+	}
 	writeJSON(w, 200, map[string]any{
 		"vm":        s.vm.Status(),
 		"control":   s.control.info(sess.ID),
 		"urls":      s.URLs(),
 		"tunnel":    s.tunnel.Status(),
 		"tailscale": s.tail.Status(),
+		"relay":     rst,
 	})
 }
 
