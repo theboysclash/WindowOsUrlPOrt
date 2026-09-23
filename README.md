@@ -45,11 +45,11 @@ A local `go build` fails when Go is missing or older than 1.21, because this mod
 5. Open **admin ▸ VM setup**, drag your Windows `.iso` onto the drop box (or click it to pick the file; it uploads from whichever PC you are browsing from), choose memory, CPUs and disk size, click **Create and start**. The Windows installer appears in the console; install as usual. Afterwards click **Detach installation media**.
 6. Change the admin password (**admin ▸ Change password**) and add users if needed.
 
-Command-line flags: `-dir <folder>` (config/data location), `-listen host:port`, `-tailscale` / `-funnel` (Tailscale sharing for this run), `-share` (Cloudflare quick link for this run), `-no-vm`, `-add-user user:pass[:admin]`, `-reset-admin-password`, `-print-urls`.
+Command-line flags: `-dir <folder>` (config/data location), `-listen host:port`, `-tailscale` / `-funnel` (Tailscale sharing for this run), `-share` (Cloudflare quick link for this run), `-relay <link>|off` (GitHub Codespace relay, saved), `-no-vm`, `-add-user user:pass[:admin]`, `-reset-admin-password`, `-print-urls`.
 
 ## Sharing a link with people outside your network
 
-Router port forwarding is not needed. Two methods are built in; pick whichever your network lets through (both can be on at once).
+Router port forwarding is not needed. Three methods are built in; pick whichever your network lets through (they can be on at once).
 
 ### Tailscale (recommended)
 
@@ -67,6 +67,18 @@ The server can also run a Cloudflare Tunnel connector next to it:
 * **Named tunnel** – a fixed hostname on your own domain. In the Cloudflare dashboard go to *Zero Trust ▸ Networks ▸ Tunnels ▸ Create a tunnel*, copy the connector token, and set the public hostname's service to `https://localhost:8443` with **No TLS Verify** enabled. Paste the token in **VM setup ▸ Sharing**, choose *Named tunnel*, save.
 
 `cloudflared.exe` is downloaded from GitHub automatically the first time sharing is switched on (or bundled by `scripts\build.ps1 -BundleCloudflared`). Login rate limiting uses the real visitor address that Cloudflare supplies.
+
+### GitHub Codespace relay (for networks that block Tailscale and Cloudflare)
+
+If a school or office filter blocks `*.ts.net` and `trycloudflare.com`, run the small relay in `cmd/relay` in a GitHub Codespace. Its public address is on `*.app.github.dev`. The host PC connects **out** to the relay and the viewer's traffic goes through GitHub.
+
+1. On any computer, open [this link to create the Codespace](https://codespaces.new/theboysclash/WindowOsUrlPOrt?ref=cursor/prebuilt-exe-b15e&quickstart=1) and click **Create codespace**. It builds and starts the relay by itself, makes port 8080 public and opens `RELAY-LINK.txt`.
+2. `RELAY-LINK.txt` contains one command. Run it once on the host PC in PowerShell, in the folder with `vmserver.exe`:
+   `.\vmserver.exe -relay "https://<codespace>-8080.app.github.dev#<key>"`
+   The link is saved in `config.yaml`, so after that a plain start of `vmserver.exe` reconnects. `-relay off` turns it off.
+3. On the Chromebook, open `https://<codespace>-8080.app.github.dev` and sign in as usual.
+
+If the port could not be made public automatically, the file says so: in the **PORTS** tab, right-click port 8080 and choose *Port Visibility ▸ Public*. A Codespace goes to sleep after 30 idle minutes (raise *Default idle timeout* to 240 at <https://github.com/settings/codespaces>) and counts against the free monthly Codespaces hours. Reopen it from <https://github.com/codespaces> to wake it. vmserver keeps retrying and reconnects on its own. The part after `#` is the key that lets a PC attach to the relay, so keep it private.
 
 Because a shared link is reachable from the whole internet: use long passwords, keep the number of accounts small, and turn sharing off when you do not need it.
 
@@ -101,6 +113,8 @@ internal/vm/         QEMU command line, process supervision, QMP client, snapsho
 internal/proxy/      WebSocket <-> VNC bridge with server-side VNC auth and view-only filter
 internal/tunnel/     cloudflared supervisor (quick/named), auto-download
 internal/tailnet/    embedded Tailscale node (tsnet), Funnel, login-link reporting
+internal/relay/      outbound relay link (WebSocket + yamux) and the relay server
+cmd/relay/           relay program run in a GitHub Codespace (.devcontainer/ starts it)
 internal/httpserver/ routes, middleware, TLS, API handlers
 web/                 embedded templates, CSS, console/setup scripts, vendored noVNC (MPL-2.0)
 scripts/             build.ps1, enable-whpx.ps1, install-service.ps1
