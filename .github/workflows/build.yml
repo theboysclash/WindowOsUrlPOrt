@@ -1,0 +1,65 @@
+name: Build Windows exe
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: GOOS=windows go vet ./...
+      - run: go test ./...
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build dist\vmserver-windows-amd64.zip
+        shell: pwsh
+        run: ./scripts/build.ps1 -BundleCloudflared -Version "${{ github.ref_name }}-$("${{ github.sha }}".Substring(0,7))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vmserver-windows-amd64
+          path: dist/vmserver-windows-amd64.zip
+          if-no-files-found: error
+
+  # Every push to main replaces the "latest" release, so
+  # releases/latest/download/vmserver-windows-amd64.zip always points at the newest build.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vmserver-windows-amd64
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          short="${GITHUB_SHA::7}"
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest vmserver-windows-amd64.zip \
+            --target "$GITHUB_SHA" \
+            --title "Latest build ($short)" \
+            --notes "Automatic build of main at $GITHUB_SHA. Unzip and run vmserver.exe. QEMU is not included: install it or put it in third_party\\qemu (see README)." \
+            --latest
