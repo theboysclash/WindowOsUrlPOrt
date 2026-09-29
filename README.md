@@ -35,7 +35,7 @@ The executable does **not** contain Windows. On first run the admin opens **VM s
 5. Open **admin ▸ VM setup**, enter the ISO path, memory, CPUs and disk size, click **Create and start**. The Windows installer appears in the console; install as usual. Afterwards click **Detach installation media**.
 6. Change the admin password (**admin ▸ Change password**) and add users if needed.
 
-Command-line flags: `-dir <folder>` (config/data location), `-listen host:port`, `-tailscale` / `-funnel` (Tailscale sharing for this run), `-share` (Cloudflare quick link for this run), `-no-vm`, `-add-user user:pass[:admin]`, `-reset-admin-password`, `-print-urls`.
+Command-line flags: `-dir <folder>` (config/data location), `-listen host:port`, `-tailscale` / `-funnel` (Tailscale sharing for this run), `-codespace` (GitHub Codespaces link for this run), `-share` (Cloudflare quick link for this run), `-no-vm`, `-add-user user:pass[:admin]`, `-reset-admin-password`, `-print-urls`.
 
 ## Sharing a link with people outside your network
 
@@ -55,6 +55,18 @@ The server can also run a Cloudflare Tunnel connector next to it:
 
 * **Quick tunnel** – free, no account. Click **Share ▸ Turn on sharing** in the console (or start with `-share`). Within a few seconds you get an `https://<random-words>.trycloudflare.com` link that anyone can open; they still have to sign in. The link changes whenever the server restarts.
 * **Named tunnel** – a fixed hostname on your own domain. In the Cloudflare dashboard go to *Zero Trust ▸ Networks ▸ Tunnels ▸ Create a tunnel*, copy the connector token, and set the public hostname's service to `https://localhost:8443` with **No TLS Verify** enabled. Paste the token in **VM setup ▸ Sharing**, choose *Named tunnel*, save.
+
+### GitHub Codespaces link
+
+Open **VM setup ▸ Sharing via GitHub Codespaces** and click **Launch Codespaces link** (or start with `-codespace`). The server keeps running on this PC; the codespace only relays traffic. The button:
+
+1. downloads the GitHub CLI (`gh`) into `data\bin` if it is not installed,
+2. shows a one-time GitHub sign-in code the first time (or uses a saved token with the `codespace` scope),
+3. reuses the relay codespace from last time or creates a 2-core one from `github/codespaces-blank`,
+4. opens a reverse SSH tunnel from this PC into it (`gh codespace ssh -- -N -R 8443:…`), reconnecting if it drops,
+5. makes port 8443 public and shows `https://<codespace>-8443.app.github.dev`.
+
+This needs the Windows OpenSSH client (*Settings ▸ Apps ▸ Optional features ▸ OpenSSH Client*, installed by default on current Windows 10/11). The codespace uses your Codespaces hours while it is on. **Turn off and stop codespace**, or closing the server, shuts it down. GitHub stops an idle codespace after at most 4 hours. When that happens, the tunnel starts it again. Visitors to a public port may first see a GitHub notice page with a **Continue** button.
 
 `cloudflared.exe` is downloaded from GitHub automatically the first time sharing is switched on (or bundled by `scripts\build.ps1 -BundleCloudflared`). Login rate limiting uses the real visitor address that Cloudflare supplies.
 
@@ -91,6 +103,7 @@ internal/vm/         QEMU command line, process supervision, QMP client, snapsho
 internal/proxy/      WebSocket <-> VNC bridge with server-side VNC auth and view-only filter
 internal/tunnel/     cloudflared supervisor (quick/named), auto-download
 internal/tailnet/    embedded Tailscale node (tsnet), Funnel, login-link reporting
+internal/codespace/  GitHub CLI driver: sign-in, relay codespace, reverse SSH tunnel
 internal/httpserver/ routes, middleware, TLS, API handlers
 web/                 embedded templates, CSS, console/setup scripts, vendored noVNC (MPL-2.0)
 scripts/             build.ps1, enable-whpx.ps1, install-service.ps1

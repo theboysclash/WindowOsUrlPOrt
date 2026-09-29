@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/codespace"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/httpserver"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
@@ -39,16 +41,17 @@ func run() error {
 	defaultBase := filepath.Dir(exe)
 
 	var (
-		baseDir    = flag.String("dir", defaultBase, "base directory holding config.yaml, data/ and vm/")
-		listen     = flag.String("listen", "", "override listen address, e.g. 0.0.0.0:8443")
-		noVM       = flag.Bool("no-vm", false, "do not start the VM automatically")
-		share      = flag.Bool("share", false, "enable a Cloudflare quick tunnel for this run (public *.trycloudflare.com URL)")
-		tailscale  = flag.Bool("tailscale", false, "join your Tailscale network for this run (https://<name>.<tailnet>.ts.net)")
-		funnel     = flag.Bool("funnel", false, "with -tailscale: also publish on the public internet via Tailscale Funnel")
-		addUser    = flag.String("add-user", "", "add or update a user as user:password[:admin] and exit")
-		resetAdmin = flag.Bool("reset-admin-password", false, "generate a new password for the first admin user and exit")
-		printURLs  = flag.Bool("print-urls", false, "print the console URLs and exit")
-		showVer    = flag.Bool("version", false, "print version and exit")
+		baseDir      = flag.String("dir", defaultBase, "base directory holding config.yaml, data/ and vm/")
+		listen       = flag.String("listen", "", "override listen address, e.g. 0.0.0.0:8443")
+		noVM         = flag.Bool("no-vm", false, "do not start the VM automatically")
+		share        = flag.Bool("share", false, "enable a Cloudflare quick tunnel for this run (public *.trycloudflare.com URL)")
+		tailscale    = flag.Bool("tailscale", false, "join your Tailscale network for this run (https://<name>.<tailnet>.ts.net)")
+		funnel       = flag.Bool("funnel", false, "with -tailscale: also publish on the public internet via Tailscale Funnel")
+		useCodespace = flag.Bool("codespace", false, "publish on a GitHub Codespaces URL for this run (https://<codespace>-8443.app.github.dev)")
+		addUser      = flag.String("add-user", "", "add or update a user as user:password[:admin] and exit")
+		resetAdmin   = flag.Bool("reset-admin-password", false, "generate a new password for the first admin user and exit")
+		printURLs    = flag.Bool("print-urls", false, "print the console URLs and exit")
+		showVer      = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
 
@@ -124,7 +127,12 @@ func run() error {
 		}
 	}
 	tail := tailnet.NewManager(cfg.Tailscale, cfg.DataDir, selfSigned, log)
-	srv, err := httpserver.New(cfg, am, vmm, tun, tail, log)
+	csLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	cs := codespace.NewManager(cfg.Codespace, *baseDir, cfg.DataDir, csLn.Addr().(*net.TCPAddr).Port, log)
+	srv, err := httpserver.New(cfg, am, vmm, tun, tail, cs, log)
 	if err != nil {
 		return err
 	}
@@ -167,6 +175,11 @@ func run() error {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.ListenAndServe(ctx) }()
+	go func() {
+		if err := srv.ServeCodespace(ctx, csLn); err != nil {
+			log.Error("codespace listener", "err", err)
+		}
+	}()
 
 	tunCfg := cfg.Tunnel
 	if *share {
@@ -186,6 +199,14 @@ func run() error {
 		tail.Start(tsCfg, srv.Handler())
 		go announceTailscale(ctx, tail)
 	}
+	csCfg := cfg.Codespace
+	if *useCodespace {
+		csCfg.Enabled = true
+	}
+	if csCfg.Enabled {
+		cs.Start(csCfg)
+	}
+	go announceCodespace(ctx, cs)
 
 	select {
 	case err := <-serveErr:
@@ -198,6 +219,7 @@ func run() error {
 	log.Info("shutting down")
 	tun.Stop()
 	tail.Stop()
+	cs.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := vmm.Stop(shutdownCtx, 45*time.Second); err != nil && !errors.Is(err, vm.ErrNotRunning) {
@@ -272,6 +294,41 @@ func announceTailscale(ctx context.Context, tail *tailnet.Manager) {
 				fmt.Println()
 			case tailnet.StateError:
 				fmt.Println("  Tailscale problem: " + st.Error)
+			}
+		}
+	}
+}
+
+// announceCodespace prints the device login code and, once connected, the
+// Codespaces URL.
+func announceCodespace(ctx context.Context, cs *codespace.Manager) {
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+	last := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			st := cs.Status()
+			key := string(st.State) + st.URL + st.LoginCode + st.Error
+			if key == last {
+				continue
+			}
+			last = key
+			switch {
+			case st.State == codespace.StateLogin && st.LoginCode != "":
+				fmt.Println()
+				fmt.Println("  GitHub Codespaces: sign the GitHub CLI in to your account.")
+				fmt.Println("  Open " + st.LoginURL + " and enter the code " + st.LoginCode)
+				fmt.Println()
+			case st.State == codespace.StateConnected:
+				fmt.Println()
+				fmt.Println("  GitHub Codespaces URL (served from this PC):")
+				fmt.Println("    " + st.URL)
+				fmt.Println()
+			case st.State == codespace.StateError:
+				fmt.Println("  Codespaces problem: " + st.Error)
 			}
 		}
 	}

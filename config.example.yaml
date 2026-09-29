@@ -46,6 +46,15 @@ tailscale:
   # auth_key: tskey-auth-...       # optional; otherwise a one-time login link is shown
   # control_url: https://headscale.example.com
 
+codespace:
+  enabled: false                   # VM setup > "Launch Codespaces link" turns this on
+  repo: github/codespaces-blank    # repository the relay codespace is created from
+  # name: fuzzy-relay-abc123       # pin an existing codespace instead of reuse/create
+  machine: basicLinux32gb          # 2-core, the cheapest machine type
+  port: 8443                       # -> https://<codespace>-8443.app.github.dev
+  visibility: public               # public | private (only your GitHub account) | org
+  # token: ghp_...                 # optional; otherwise a GitHub device sign-in code is shown
+
 users:
   - username: admin
     password_hash: "$2a$10$replace-me-generated-on-first-run"

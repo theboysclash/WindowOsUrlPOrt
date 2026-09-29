@@ -116,6 +116,31 @@ type Tailscale struct {
 	ControlURL string `yaml:"control_url,omitempty"`
 }
 
+// Codespace publishes the console on a GitHub Codespaces forwarded-port URL
+// (https://<codespace>-<port>.app.github.dev). The server keeps running on
+// this PC; the codespace only relays traffic through a reverse SSH tunnel
+// opened with the GitHub CLI.
+type Codespace struct {
+	Enabled bool `yaml:"enabled"`
+	// Repo is the repository the relay codespace is created from.
+	Repo string `yaml:"repo"`
+	// Name pins an existing codespace; empty means reuse or create one.
+	Name string `yaml:"name,omitempty"`
+	// Machine is the codespace machine type used when creating one.
+	Machine string `yaml:"machine"`
+	// Port is the port inside the codespace, which appears in the URL.
+	Port int `yaml:"port"`
+	// Visibility of the forwarded port: public, private or org.
+	Visibility string `yaml:"visibility"`
+	// Token is an optional GitHub token with the codespace scope; without
+	// it a one-time device login link is shown.
+	Token string `yaml:"token,omitempty"`
+	// BinaryPath overrides where to find gh. Empty means look in
+	// third_party/gh next to the exe, the data dir, then PATH, and
+	// download it from GitHub releases when missing.
+	BinaryPath string `yaml:"binary_path,omitempty"`
+}
+
 type Config struct {
 	ListenAddr string `yaml:"listen_addr"`
 	// DataDir stores generated certificates, the session secret and logs.
@@ -126,6 +151,7 @@ type Config struct {
 	Tunnel  Tunnel `yaml:"tunnel"`
 	// Tailscale is the second sharing method; both can be on at once.
 	Tailscale Tailscale `yaml:"tailscale"`
+	Codespace Codespace `yaml:"codespace"`
 	Users     []User    `yaml:"users"`
 
 	path string
@@ -176,6 +202,7 @@ func Default(baseDir string) *Config {
 		},
 		Tunnel:    Tunnel{Enabled: false, Mode: "quick", AutoDownload: true},
 		Tailscale: Tailscale{Enabled: false, Hostname: "vmserver", Funnel: false},
+		Codespace: Codespace{Enabled: false, Repo: DefaultCodespaceRepo, Machine: DefaultCodespaceMachine, Port: 8443, Visibility: "public"},
 	}
 }
 
@@ -238,6 +265,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := ValidateTailscale(&c.Tailscale); err != nil {
+		return err
+	}
+	if err := ValidateCodespace(&c.Codespace); err != nil {
 		return err
 	}
 	if c.Auth.SessionTTLMinutes <= 0 {
@@ -318,6 +348,43 @@ func ValidateTailscale(t *Tailscale) error {
 		if !ok {
 			return errors.New("tailscale.hostname may only contain lowercase letters, digits and inner hyphens")
 		}
+	}
+	return nil
+}
+
+const (
+	// DefaultCodespaceRepo is GitHub's empty starter template: any account
+	// can create a codespace from it and the default image includes sshd.
+	DefaultCodespaceRepo    = "github/codespaces-blank"
+	DefaultCodespaceMachine = "basicLinux32gb"
+)
+
+// ValidateCodespace checks and normalises the codespace section.
+func ValidateCodespace(c *Codespace) error {
+	c.Repo = strings.Trim(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(c.Repo, "https://"), "github.com/")), "/")
+	if c.Repo == "" {
+		c.Repo = DefaultCodespaceRepo
+	}
+	if parts := strings.Split(c.Repo, "/"); len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("codespace.repo must look like owner/name, got %q", c.Repo)
+	}
+	c.Name = strings.TrimSpace(c.Name)
+	c.Machine = strings.TrimSpace(c.Machine)
+	if c.Machine == "" {
+		c.Machine = DefaultCodespaceMachine
+	}
+	if c.Port == 0 {
+		c.Port = 8443
+	}
+	if c.Port < 1024 || c.Port > 65535 {
+		return errors.New("codespace.port must be between 1024 and 65535")
+	}
+	switch c.Visibility {
+	case "":
+		c.Visibility = "public"
+	case "public", "private", "org":
+	default:
+		return fmt.Errorf("codespace.visibility must be public, private or org, got %q", c.Visibility)
 	}
 	return nil
 }

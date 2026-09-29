@@ -69,6 +69,54 @@
     </div>
   </form>
 
+  <section class="advanced" id="codespace">
+    <h2>Sharing via GitHub Codespaces</h2>
+    <p class="muted small">Gives the console an <code>https://&lt;codespace&gt;-{{.CS.Port}}.app.github.dev</code> address. Everything still runs on this PC; a small codespace on your GitHub account only relays traffic through an SSH tunnel. One click downloads the GitHub CLI if needed, signs you in, creates the codespace and opens the tunnel. It uses your Codespaces hours while it is on, so turn it off when you do not need it.</p>
+    <div class="alert" id="csStatusBox">
+      {{if eq .CSStatus.State "connected"}}Connected: <a href="{{.CSStatus.URL}}" target="_blank" rel="noopener">{{.CSStatus.URL}}</a>
+      {{else if eq .CSStatus.State "error"}}Error: {{.CSStatus.Error}}
+      {{else}}State: {{.CSStatus.State}}{{end}}
+    </div>
+    <div class="alert error" id="csError" hidden></div>
+    <form id="csForm">
+      <div class="row">
+        <button type="submit" class="primary" id="csLaunch">Launch Codespaces link</button>
+        <button type="button" id="csStop" {{if not .CS.Enabled}}hidden{{end}}>Turn off and stop codespace</button>
+        <button type="button" id="csLogBtn">Show log</button>
+      </div>
+      <details>
+        <summary>Options</summary>
+        <div class="grid2">
+          <label>Relay repository
+            <input name="repo" value="{{.CS.Repo}}" placeholder="github/codespaces-blank">
+            <span class="hint">The codespace is created from this repository. The default works for any account.</span>
+          </label>
+          <label>Existing codespace name (optional)
+            <input name="name" value="{{.CS.Name}}" placeholder="reuse or create automatically">
+          </label>
+          <label>Machine type
+            <input name="machine" value="{{.CS.Machine}}" placeholder="basicLinux32gb">
+          </label>
+          <label>Port in the URL
+            <input name="port" type="number" min="1024" max="65535" value="{{.CS.Port}}">
+          </label>
+          <label>Who can open the link
+            <select name="visibility">
+              <option value="public" {{if eq .CS.Visibility "public"}}selected{{end}}>Anyone with the link (they still sign in here)</option>
+              <option value="private" {{if eq .CS.Visibility "private"}}selected{{end}}>Only my GitHub account</option>
+              <option value="org" {{if eq .CS.Visibility "org"}}selected{{end}}>Members of the repository's organization</option>
+            </select>
+          </label>
+          <label>GitHub token (optional)
+            <input name="token" type="password" placeholder="{{if .HasCSTok}}(saved — leave empty to keep){{else}}ghp_… with codespace scope{{end}}" autocomplete="off">
+            <span class="hint">Without a token, a one-time GitHub sign-in code appears here.</span>
+          </label>
+        </div>
+      </details>
+    </form>
+    <pre id="csLog" class="log" hidden></pre>
+  </section>
+
   <section class="advanced" id="sharing">
     <h2>Sharing via Tailscale (recommended)</h2>
     <p class="muted small">The server joins your Tailscale network as a device named <code>{{.TS.Hostname}}</code>. Anyone signed in to the same Tailscale account (or a shared tailnet) reaches it at <code>https://{{.TS.Hostname}}.&lt;your-tailnet&gt;.ts.net</code>; traffic is end-to-end WireGuard and usually gets through networks that block tunnel domains. Turn on <em>Funnel</em> to make the same link work for people without Tailscale.</p>
