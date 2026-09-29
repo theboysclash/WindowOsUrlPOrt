@@ -26,6 +26,10 @@ The executable does **not** contain Windows. On first run the admin opens **VM s
 
 "Tiny10"-style ISOs are third-party modified Windows images. They will boot here like any other ISO (Tiny10 works fine with the default SATA disk), but redistributing them or shipping one inside this program violates Microsoft's licence terms, so this project never bundles one. If you want a small guest, install stock Windows 10 and debloat it inside the VM.
 
+## Download
+
+Every push to `main` is built by GitHub Actions. The newest Windows build is always at [releases/latest/download/vmserver-windows-amd64.zip](https://github.com/theboysclash/WindowOsUrlPOrt/releases/latest/download/vmserver-windows-amd64.zip). It includes `cloudflared` but not QEMU; see step 1 below. Pull requests get the same zip under the run's **Artifacts** on the Actions tab.
+
 ## Quick start (host PC)
 
 1. Install [QEMU for Windows](https://qemu.weilnetz.de/w64/) (default location is fine) **or** unzip a release that already contains `third_party\qemu`.
