@@ -131,6 +131,92 @@ $("tunnelLogBtn").onclick = async () => {
 
 if (location.hash === "#sharing") document.getElementById("sharing").scrollIntoView();
 
+// --- GitHub Codespaces ---
+
+function link(href, text) {
+  const a = document.createElement("a");
+  a.href = href; a.textContent = text; a.target = "_blank"; a.rel = "noopener";
+  return a;
+}
+
+function describeCodespace(st) {
+  const box = $("csStatusBox");
+  box.innerHTML = "";
+  if (st.state === "connected" && st.url) {
+    box.append("Connected: ", link(st.url, st.url));
+  } else if (st.state === "needs_login" && st.login_code) {
+    box.append("Sign in to GitHub: open ", link(st.login_url, st.login_url), " and enter the code ");
+    const code = document.createElement("strong");
+    code.textContent = st.login_code;
+    box.append(code);
+  } else if (st.state === "error") {
+    box.textContent = "Error: " + (st.error || "unknown");
+  } else {
+    box.textContent = (st.step || "State: " + st.state) + (st.state === "disabled" || st.state === "stopped" ? "" : "…");
+  }
+  $("csStop").hidden = st.state === "disabled" || st.state === "stopped";
+}
+
+let csPolling = false;
+async function pollCodespace() {
+  if (csPolling) return;
+  csPolling = true;
+  try {
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        const res = await fetch("/api/status", { credentials: "same-origin" });
+        const st = (await res.json()).codespace;
+        describeCodespace(st);
+        if (["connected", "disabled", "stopped"].includes(st.state)) return;
+      } catch { /* keep polling */ }
+    }
+  } finally { csPolling = false; }
+}
+
+async function sendCodespace(body) {
+  $("csError").hidden = true;
+  try {
+    describeCodespace(await post("/api/codespace", body));
+    pollCodespace();
+  } catch (err) {
+    $("csError").textContent = err.message;
+    $("csError").hidden = false;
+  }
+}
+
+$("csForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const btn = $("csLaunch");
+  btn.disabled = true;
+  await sendCodespace({
+    enabled: true,
+    repo: f.get("repo") || "",
+    name: f.get("name") || "",
+    machine: f.get("machine") || "",
+    port: Number(f.get("port") || 0),
+    visibility: f.get("visibility"),
+    token: f.get("token") || "",
+  });
+  btn.disabled = false;
+};
+
+$("csStop").onclick = () => sendCodespace({ enabled: false });
+
+$("csLogBtn").onclick = async () => {
+  const pre = $("csLog");
+  pre.hidden = !pre.hidden;
+  if (pre.hidden) return;
+  try {
+    const res = await fetch("/api/codespace/log", { credentials: "same-origin" });
+    const data = await res.json();
+    pre.textContent = (data.log || []).join("\n") || "(no output yet)";
+  } catch (err) { pre.textContent = err.message; }
+};
+
+pollCodespace();
+
 // --- Tailscale ---
 
 $("tsForm").onsubmit = async (e) => {

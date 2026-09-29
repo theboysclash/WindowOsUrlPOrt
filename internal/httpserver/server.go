@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/codespace"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
@@ -34,6 +35,7 @@ type Server struct {
 	vm     *vm.Manager
 	tunnel *tunnel.Manager
 	tail   *tailnet.Manager
+	cs     *codespace.Manager
 	log    *slog.Logger
 	tmpl   *template.Template
 
@@ -55,14 +57,14 @@ type controller struct {
 	viewers   int
 }
 
-func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, tun *tunnel.Manager, tail *tailnet.Manager, log *slog.Logger) (*Server, error) {
+func New(cfg *config.Config, am *auth.Manager, vmm *vm.Manager, tun *tunnel.Manager, tail *tailnet.Manager, cs *codespace.Manager, log *slog.Logger) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"json": jsonAttr,
 	}).ParseFS(web.FS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, auth: am, vm: vmm, tunnel: tun, tail: tail, log: log, tmpl: tmpl}
+	s := &Server{cfg: cfg, auth: am, vm: vmm, tunnel: tun, tail: tail, cs: cs, log: log, tmpl: tmpl}
 	s.upgrader = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
@@ -114,6 +116,8 @@ func (s *Server) buildHandler() http.Handler {
 	api.Handle("POST /api/tunnel", s.requireAdmin(http.HandlerFunc(s.apiTunnel)))
 	api.Handle("GET /api/tunnel/log", s.requireAdmin(http.HandlerFunc(s.apiTunnelLog)))
 	api.Handle("POST /api/tailscale", s.requireAdmin(http.HandlerFunc(s.apiTailscale)))
+	api.Handle("POST /api/codespace", s.requireAdmin(http.HandlerFunc(s.apiCodespace)))
+	api.Handle("GET /api/codespace/log", s.requireAdmin(http.HandlerFunc(s.apiCodespaceLog)))
 	api.Handle("POST /api/users", s.requireAdmin(http.HandlerFunc(s.apiAddUser)))
 	api.Handle("POST /api/password", http.HandlerFunc(s.apiChangePassword))
 	mux.Handle("/api/", s.requireAuth(csrfGuard(api)))
@@ -171,6 +175,53 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		return nil
 	}
 	return err
+}
+
+// ServeCodespace serves plain HTTP on ln, a loopback listener that only the
+// Codespaces reverse tunnel connects to. The browser still talks HTTPS to
+// *.app.github.dev and the hop to this PC is inside SSH, so TLS here would
+// only make the Codespaces proxy reject the self-signed certificate.
+func (s *Server) ServeCodespace(ctx context.Context, ln net.Listener) error {
+	srv := &http.Server{
+		Handler:           codespaceForwarded(s.cs.PublicHost, s.Handler()),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
+	}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+	err := srv.Serve(ln)
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// codespaceForwarded restores the public host (for the Origin/CSRF checks)
+// and the visitor address (for login rate limiting) on requests relayed by
+// the Codespaces port forwarder. Everything on this listener arrives through
+// that proxy, so its headers are trusted. The last X-Forwarded-For entry is
+// used because it is the one the proxy appended, not one a client supplied.
+func codespaceForwarded(publicHost func() string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h := publicHost(); h != "" {
+			r.Host = h
+		} else if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+			r.Host = h
+		}
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if ip := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); ip != nil {
+				r.RemoteAddr = net.JoinHostPort(ip.String(), "0")
+			}
+		}
+		r.Header.Del("CF-Connecting-IP")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // LocalOrigin returns the loopback URL cloudflared should forward to.

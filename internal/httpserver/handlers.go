@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/auth"
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/codespace"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/proxy"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
@@ -150,6 +151,9 @@ type setupData struct {
 	TS       config.Tailscale
 	HasTSKey bool
 	TSStatus tailnet.Status
+	CS       config.Codespace
+	HasCSTok bool
+	CSStatus codespace.Status
 }
 
 func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
@@ -167,11 +171,15 @@ func (s *Server) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 	tss := s.tail.Status()
 	ts.Enabled = ts.Enabled || (tss.State != tailnet.StateDisabled && tss.State != tailnet.StateStopped)
 	ts.Funnel = ts.Funnel || tss.Funnel
+	cs := s.cfg.Codespace
+	hasCSTok := cs.Token != ""
+	cs.Token = ""
 	s.render(w, "setup.html", setupData{
 		User: sess.Username, Config: s.vm.Config(), Status: s.vm.Status(),
 		Tunnel: t, HasToken: hasToken, TStatus: tst,
 		Origin: strings.Replace(LocalOrigin(s.cfg), "127.0.0.1", "localhost", 1),
 		TS:     ts, HasTSKey: hasKey, TSStatus: tss,
+		CS: cs, HasCSTok: hasCSTok, CSStatus: s.cs.Status(),
 	})
 }
 
@@ -285,6 +293,7 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 		"urls":      s.URLs(),
 		"tunnel":    s.tunnel.Status(),
 		"tailscale": s.tail.Status(),
+		"codespace": s.cs.Status(),
 	})
 }
 
@@ -559,6 +568,58 @@ func (s *Server) apiTailscale(w http.ResponseWriter, r *http.Request) {
 	// Restart asynchronously: stopping the node can take a few seconds.
 	go s.tail.Start(t, s.Handler())
 	writeJSON(w, 200, map[string]any{"state": "starting", "enabled": t.Enabled, "funnel": t.Funnel, "hostname": t.Hostname})
+}
+
+// apiCodespace saves the Codespaces sharing settings and launches or stops
+// the whole chain (GitHub CLI, sign-in, codespace, tunnel).
+func (s *Server) apiCodespace(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Enabled    bool   `json:"enabled"`
+		Repo       string `json:"repo"`
+		Name       string `json:"name"`
+		Machine    string `json:"machine"`
+		Port       int    `json:"port"`
+		Visibility string `json:"visibility"`
+		Token      string `json:"token"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "invalid json"})
+		return
+	}
+	s.cfg.Lock()
+	c := s.cfg.Codespace
+	c.Enabled = body.Enabled
+	if body.Enabled {
+		c.Repo, c.Name, c.Machine, c.Port, c.Visibility = body.Repo, body.Name, body.Machine, body.Port, body.Visibility
+		if body.Token != "" {
+			c.Token = strings.TrimSpace(body.Token)
+		}
+	}
+	if err := config.ValidateCodespace(&c); err != nil {
+		s.cfg.Unlock()
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	s.cfg.Codespace = c
+	err := s.cfg.Save()
+	s.cfg.Unlock()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	sess := sessionFrom(r.Context())
+	s.log.Info("codespace sharing changed", "user", sess.Username, "enabled", c.Enabled, "repo", c.Repo)
+	if c.Enabled {
+		s.cs.Start(c)
+	} else {
+		// Stopping shuts the codespace down, which takes a few seconds.
+		go s.cs.Stop()
+	}
+	writeJSON(w, 200, s.cs.Status())
+}
+
+func (s *Server) apiCodespaceLog(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"status": s.cs.Status(), "log": s.cs.Log()})
 }
 
 func (s *Server) apiTunnelLog(w http.ResponseWriter, r *http.Request) {

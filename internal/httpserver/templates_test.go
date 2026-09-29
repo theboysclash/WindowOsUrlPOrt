@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/theboysclash/WindowOsUrlPOrt/internal/codespace"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/config"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tailnet"
 	"github.com/theboysclash/WindowOsUrlPOrt/internal/tunnel"
@@ -19,7 +20,7 @@ func TestTemplatesRender(t *testing.T) {
 	cfg := config.Default(t.TempDir())
 	log := slog.Default()
 	vmm := vm.NewManager(cfg.VM, t.TempDir(), log)
-	s, err := New(cfg, nil, vmm, tunnel.NewManager(cfg.Tunnel, ".", ".", "https://127.0.0.1:8443", log), tailnet.NewManager(cfg.Tailscale, ".", nil, log), log)
+	s, err := New(cfg, nil, vmm, tunnel.NewManager(cfg.Tunnel, ".", ".", "https://127.0.0.1:8443", log), tailnet.NewManager(cfg.Tailscale, ".", nil, log), codespace.NewManager(cfg.Codespace, ".", ".", 0, log), log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +30,7 @@ func TestTemplatesRender(t *testing.T) {
 		"setup.html": setupData{
 			User: "admin", Config: cfg.VM, Status: vmm.Status(), Tunnel: cfg.Tunnel, TStatus: s.tunnel.Status(),
 			Origin: "https://localhost:8443", TS: cfg.Tailscale, TSStatus: s.tail.Status(),
+			CS: cfg.Codespace, CSStatus: s.cs.Status(),
 		},
 	}
 	for name, data := range cases {
